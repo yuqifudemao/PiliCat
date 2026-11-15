@@ -344,6 +344,9 @@ abstract final class VideoHttp {
                     progress['current_watch_progress'] ??
                     progress['current_progress'];
               }
+            } else if (videoType == .pgc &&
+                BangumiRoaming.hasAreaLimitPanel(result['plugins'])) {
+              return await playbackError(6002003, '当前地区无法播放该番剧');
             } else if (result['arc']?['is_drm'] == true) {
               return await videoUrl(
                 avid: avid,
@@ -363,7 +366,7 @@ abstract final class VideoHttp {
               if (reason != null) {
                 return await playbackError(reason['code'], reason['message']);
               } else {
-                return Error(result.toString());
+                return const Error('B 站未返回可播放的视频流');
               }
             }
 

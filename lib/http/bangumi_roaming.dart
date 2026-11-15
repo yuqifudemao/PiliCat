@@ -30,6 +30,15 @@ abstract final class BangumiRoaming {
             .hasMatch(message ?? '');
   }
 
+  static bool hasAreaLimitPanel(Object? plugins) {
+    return plugins is List &&
+        plugins.any((plugin) =>
+            plugin is Map &&
+            plugin['name'] == 'AreaLimitPanel' &&
+            plugin['config'] is Map &&
+            plugin['config']['is_block'] == true);
+  }
+
   static Dio _client() => Dio(
     BaseOptions(
       connectTimeout: const Duration(seconds: 8),
@@ -120,6 +129,12 @@ abstract final class BangumiRoaming {
             }
           }
         }
+      }
+      if (body is Map<String, dynamic> &&
+          (body['code'] == -10403 ||
+              isRegionRestricted(body['code'] is int ? body['code'] : null,
+                  body['message'] is String ? body['message'] : null))) {
+        return const Error('当前漫游线路也受地区限制，无法播放这一集');
       }
       return Error('番剧漫游解析服务未返回可播放的视频');
     } on DioException {
