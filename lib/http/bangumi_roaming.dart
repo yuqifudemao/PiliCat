@@ -1,4 +1,5 @@
 import 'package:PiliPlus/http/loading_state.dart';
+import 'package:PiliPlus/models/search/result.dart';
 import 'package:PiliPlus/models/video/play/url.dart';
 import 'package:PiliPlus/models_new/pgc/pgc_info_model/result.dart';
 import 'package:dio/dio.dart';
@@ -46,6 +47,58 @@ abstract final class BangumiRoaming {
       followRedirects: false,
     ),
   );
+
+  static Future<LoadingState<SearchPgcData>> search({
+    required String address,
+    required String area,
+    required String keyword,
+    required String page,
+  }) async {
+    if (address.isEmpty) {
+      return const Error('请在其它设置中配置外番搜索服务');
+    }
+    final playback = endpoint(address);
+    if (playback == null) return const Error('外番搜索服务地址无效');
+
+    final prefix = playback.path.replaceFirst(
+      RegExp(r'/pgc/player/web/(?:v2/)?playurl$'),
+      '',
+    );
+    final uri = playback.replace(
+      path: '$prefix/x/web-interface/search/type',
+      queryParameters: {
+        ...playback.queryParameters,
+        'search_type': 'media_bangumi',
+        'keyword': keyword,
+        'page': page,
+        'area': area,
+      },
+    );
+    final client = _client();
+    try {
+      final body = (await client.getUri<dynamic>(uri)).data;
+      if (body is Map<String, dynamic> && body['code'] == 0) {
+        final data = body['data'];
+        if (data is Map<String, dynamic>) {
+          final items = data['result'];
+          return Success(SearchPgcData.fromJson({
+            ...data,
+            if (items is List)
+              'result': items.where((item) =>
+                  item is Map && item['season_id'] is int &&
+                  (item['season_id'] as int) > 0).toList(),
+          }));
+        }
+      }
+      return const Error('外番搜索服务没有返回结果');
+    } on DioException {
+      return const Error('无法连接外番搜索服务');
+    } on Object {
+      return const Error('外番搜索服务返回了不兼容的数据');
+    } finally {
+      client.close();
+    }
+  }
 
   static Future<LoadingState<PgcInfoModel>> season({
     required String address,

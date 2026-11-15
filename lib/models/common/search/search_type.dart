@@ -21,6 +21,8 @@ enum SearchType implements EnumWithLabel {
   // 专栏：article
   article('专栏'),
   // 视频：video
+  taiwanBangumi('台'),
+  hongKongBangumi('港'),
   video('视频'),
   ;
 
@@ -39,5 +41,7 @@ enum SearchType implements EnumWithLabel {
     .live_room,
     .bili_user,
     .article,
+    .taiwanBangumi,
+    .hongKongBangumi,
   ];
 }

@@ -62,6 +62,24 @@ abstract final class SearchHttp {
     String? gaiaVtoken,
     required ValueChanged<String> onSuccess,
   }) async {
+    final area = switch (searchType) {
+      .taiwanBangumi => 'tw',
+      .hongKongBangumi => 'hk',
+      _ => null,
+    };
+    if (area != null) {
+      final result = await BangumiRoaming.search(
+        address: Pref.bangumiSearchUrl,
+        area: area,
+        keyword: keyword,
+        page: page.toString(),
+      );
+      return switch (result) {
+        Success(:final response) => Success(response as R),
+        final Error error => error,
+        _ => const Error('外番搜索失败'),
+      };
+    }
     final params = await WbiSign.makSign({
       'search_type': searchType.name,
       'keyword': keyword,
@@ -106,7 +124,8 @@ abstract final class SearchHttp {
             switch (searchType) {
               .all => SearchVideoData.fromSearchAll(dataData),
               .video => SearchVideoData.fromJson(dataData),
-              .media_bangumi || .media_ft => SearchPgcData.fromJson(dataData),
+              .media_bangumi || .media_ft || .taiwanBangumi || .hongKongBangumi =>
+                SearchPgcData.fromJson(dataData),
               .live_room => SearchLiveData.fromJson(dataData),
               .bili_user => SearchUserData.fromJson(dataData),
               .article => SearchArticleData.fromJson(dataData),

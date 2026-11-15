@@ -287,6 +287,13 @@ List<SettingsModel> get extraSettings => [
     onTap: _showBangumiRoamingDialog,
   ),
   NormalModel(
+    title: '外番搜索服务',
+    getSubtitle: () => Pref.bangumiSearchUrl.isEmpty ? '未配置' : '已配置搜索服务',
+    leading: const Icon(Icons.search),
+    onTap: (context, setState) =>
+        _showBangumiRoamingDialog(context, setState, search: true),
+  ),
+  NormalModel(
     title: '最大缓存大小',
     getSubtitle: () => '当前最大缓存大小: 「${Pref.maxCacheSize.formatSize}」',
     leading: const Icon(Icons.delete_outlined),
@@ -533,22 +540,24 @@ Future<void> _showReplyDelayDialog(
 
 Future<void> _showBangumiRoamingDialog(
   BuildContext context,
-  VoidCallback setState,
-) async {
-  var address = Pref.bangumiRoamingUrl;
+  VoidCallback setState, {
+  bool search = false,
+}) async {
+  var address = search ? Pref.bangumiSearchUrl : Pref.bangumiRoamingUrl;
   final formKey = GlobalKey<FormState>();
   final result = await showDialog<String>(
     context: context,
     builder: (context) => AlertDialog(
-      title: const Text('番剧漫游解析地址'),
+      title: Text(search ? '外番搜索服务地址' : '番剧漫游解析地址'),
       content: Form(
         key: formKey,
         child: TextFormField(
           initialValue: address,
           keyboardType: TextInputType.url,
-          decoration: const InputDecoration(
-            hintText: 'https://example.com?area=hk',
-            helperText: '仅在番剧播放遇到地区限制时使用，留空关闭',
+          decoration: InputDecoration(
+            hintText: 'https://example.com',
+            helperText: search ? '仅在台、港搜索标签使用，留空关闭' :
+                '仅在番剧详情或播放需要漫游时使用，留空关闭',
             helperMaxLines: 2,
           ),
           onChanged: (value) => address = value.trim(),
@@ -572,7 +581,10 @@ Future<void> _showBangumiRoamingDialog(
     ),
   );
   if (result != null) {
-    await GStorage.setting.put(SettingBoxKey.bangumiRoamingUrl, result);
+    await GStorage.setting.put(
+      search ? SettingBoxKey.bangumiSearchUrl : SettingBoxKey.bangumiRoamingUrl,
+      result,
+    );
     if (context.mounted) setState();
   }
 }
