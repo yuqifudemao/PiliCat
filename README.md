@@ -30,7 +30,7 @@ PiliCat 由「PiliNara 个人版」更名而来。
 
 在「设置 → 其它设置 → 番剧漫游」填入自有或可信的 HTTPS 解析地址。可以填服务根地址，也可以填完整的 Web 播放接口。服务如果要求地区参数，可随地址填写，例如 `https://example.com?area=hk`。留空保存即可关闭。
 
-打开能加载详情的 B 站番剧。当原播放接口返回地区限制时，PiliCat 会通过该服务重试播放地址。解析请求会发送番剧集号等播放参数，应用不会附带 B 站登录 Cookie 或 Token。该功能需要服务支持 `/pgc/player/web/playurl` 或兼容的 Web 播放响应。
+PiliCat 优先使用 B 站接口。遇到部分详情加载错误、空集数或播放地区限制时，会通过该服务重试。解析请求会发送番剧集号等参数，应用不会附带 B 站登录 Cookie 或 Token。要支持详情重试和播放，服务需要提供 `/pgc/view/web/season` 及兼容的 Web 播放接口。
 
 <details>
 <summary>查看上游界面截图</summary>

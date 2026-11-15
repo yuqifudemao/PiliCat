@@ -1,4 +1,5 @@
 import 'package:PiliPlus/http/api.dart';
+import 'package:PiliPlus/http/bangumi_roaming.dart';
 import 'package:PiliPlus/http/browser_ua.dart';
 import 'package:PiliPlus/http/init.dart';
 import 'package:PiliPlus/http/loading_state.dart';
@@ -11,6 +12,7 @@ import 'package:PiliPlus/models_new/pgc/pgc_info_model/result.dart';
 import 'package:PiliPlus/models_new/search/search_rcmd/data.dart';
 import 'package:PiliPlus/models_new/search/search_trending/data.dart';
 import 'package:PiliPlus/utils/extension/iterable_ext.dart';
+import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:PiliPlus/utils/wbi_sign.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
@@ -154,18 +156,35 @@ abstract final class SearchHttp {
     dynamic seasonId,
     dynamic epId,
   }) async {
-    final res = await Request().get(
-      Api.pgcInfo,
-      queryParameters: {
-        'season_id': ?seasonId,
-        'ep_id': ?epId,
-      },
-    );
-    if (res.data['code'] == 0) {
-      return Success(PgcInfoModel.fromJson(res.data['result']));
-    } else {
-      return Error(res.data['message']);
+    final address = Pref.bangumiRoamingUrl;
+    try {
+      final res = await Request().get(
+        Api.pgcInfo,
+        queryParameters: {
+          'season_id': ?seasonId,
+          'ep_id': ?epId,
+        },
+      );
+      final code = res.data['code'] as int?;
+      final message = res.data['message'] as String?;
+      if (code == 0) {
+        final info = PgcInfoModel.fromJson(res.data['result']);
+        final (episode, _) = info.findEpisode();
+        if (episode != null || address.isEmpty) return Success(info);
+      } else if (address.isEmpty ||
+          (code != -404 &&
+              !BangumiRoaming.isRegionRestricted(code, message))) {
+        return Error(message);
+      }
+    } on DioException catch (error) {
+      // HTTP 412 can also prevent the official details response from loading.
+      if (address.isEmpty || error.response?.statusCode != 412) rethrow;
     }
+    return BangumiRoaming.season(
+      address: address,
+      seasonId: seasonId,
+      epId: epId,
+    );
   }
 
   static Future<LoadingState<PgcInfoModel>> pugvInfo({

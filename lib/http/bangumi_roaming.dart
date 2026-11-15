@@ -1,5 +1,6 @@
 import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/models/video/play/url.dart';
+import 'package:PiliPlus/models_new/pgc/pgc_info_model/result.dart';
 import 'package:dio/dio.dart';
 
 abstract final class BangumiRoaming {
@@ -29,6 +30,55 @@ abstract final class BangumiRoaming {
             .hasMatch(message ?? '');
   }
 
+  static Dio _client() => Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 8),
+      receiveTimeout: const Duration(seconds: 10),
+      followRedirects: false,
+    ),
+  );
+
+  static Future<LoadingState<PgcInfoModel>> season({
+    required String address,
+    Object? seasonId,
+    Object? epId,
+  }) async {
+    final playback = endpoint(address);
+    if (playback == null) return const Error('番剧漫游解析地址无效');
+
+    final prefix = playback.path.replaceFirst(
+      RegExp(r'/pgc/player/web/(?:v2/)?playurl$'),
+      '',
+    );
+    final uri = playback.replace(
+      path: '$prefix/pgc/view/web/season',
+      queryParameters: {
+        ...playback.queryParameters,
+        if (seasonId != null) 'season_id': '$seasonId',
+        if (epId != null) 'ep_id': '$epId',
+      },
+    );
+    final client = _client();
+    try {
+      final body = (await client.getUri<dynamic>(uri)).data;
+      if (body is Map<String, dynamic> && body['code'] == 0) {
+        final result = body['result'];
+        if (result is Map<String, dynamic>) {
+          final info = PgcInfoModel.fromJson(result);
+          final (episode, _) = info.findEpisode();
+          if (episode != null) return Success(info);
+        }
+      }
+      return const Error('番剧漫游未返回详情，请检查线路是否支持番剧详情');
+    } on DioException {
+      return const Error('无法连接番剧漫游详情服务');
+    } on Object {
+      return const Error('番剧漫游返回了不兼容的详情数据');
+    } finally {
+      client.close();
+    }
+  }
+
   static Future<LoadingState<PlayUrlModel>> playUrl({
     required String address,
     required String episodeId,
@@ -41,11 +91,7 @@ abstract final class BangumiRoaming {
     if (uri == null) return Error('番剧漫游解析地址无效');
 
     // Keep Bilibili account headers and cookies out of resolver requests.
-    final client = Dio(BaseOptions(
-      connectTimeout: const Duration(seconds: 8),
-      receiveTimeout: const Duration(seconds: 10),
-      followRedirects: false,
-    ));
+    final client = _client();
     try {
       final response = await client.getUri<dynamic>(uri.replace(
         queryParameters: {
