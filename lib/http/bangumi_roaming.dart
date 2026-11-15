@@ -2,6 +2,9 @@ import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/models/search/result.dart';
 import 'package:PiliPlus/models/video/play/url.dart';
 import 'package:PiliPlus/models_new/pgc/pgc_info_model/result.dart';
+import 'package:PiliPlus/utils/accounts.dart';
+import 'package:PiliPlus/utils/app_sign.dart';
+import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:dio/dio.dart';
 
 abstract final class BangumiRoaming {
@@ -149,29 +152,47 @@ abstract final class BangumiRoaming {
     int? avid,
     String? bvid,
   }) async {
-    final uri = endpoint(address);
-    if (uri == null) return Error('番剧漫游解析地址无效');
+    final useApp = Pref.bangumiAppAuth;
+    final uri = useApp
+        ? Uri.parse('https://bili.nepnep.moe/pgc/player/api/playurl')
+        : endpoint(address);
+    if (uri == null) return const Error('番剧漫游解析地址无效');
+    final accessKey = useApp ? Accounts.video.accessKey : null;
+    if (useApp && (accessKey == null || accessKey.isEmpty)) {
+      return const Error('播放账号缺少访问令牌，请在 PiliCat 重新登录 B 站账号');
+    }
 
-    // Keep Bilibili account headers and cookies out of resolver requests.
+    // The opt-in token is sent only to this HTTPS endpoint, without redirects.
     final client = _client();
     try {
-      final response = await client.getUri<dynamic>(uri.replace(
-        queryParameters: {
-          ...uri.queryParameters,
-          'ep_id': episodeId,
-          'cid': '$cid',
-          'qn': '$qn',
-          'fnval': '4048',
-          'fnver': '0',
-          'fourk': '1',
-          'module': 'bangumi',
-          if (avid != null) 'avid': '$avid',
-          if (bvid != null) 'bvid': bvid,
-        },
-      ));
+      final params = <String, dynamic>{
+        ...uri.queryParameters,
+        'ep_id': episodeId,
+        'cid': '$cid',
+        'qn': '$qn',
+        'fnval': '4048',
+        'fnver': '0',
+        'fourk': '1',
+        if (avid != null) 'avid': '$avid',
+        if (bvid != null) 'bvid': bvid,
+        if (useApp) ...{
+          'area': Pref.bangumiAppArea == 'hk' ? 'hk' : 'tw',
+          'access_key': accessKey!,
+          'build': '2001100',
+          'device': 'android',
+          'mobi_app': 'android_hd',
+          'platform': 'android',
+          'force_host': '2',
+        } else 'module': 'bangumi',
+      };
+      if (useApp) AppSign.appSign(params);
+      final requestUri = useApp
+          ? uri.replace(query: AppSign.makeQuery(params))
+          : uri.replace(queryParameters: params);
+      final response = await client.getUri<dynamic>(requestUri);
       final body = response.data;
       if (body is Map<String, dynamic> && body['code'] == 0) {
-        final result = body['result'] ?? body['data'];
+        final result = body['result'] ?? body['data'] ?? body;
         if (result is Map<String, dynamic>) {
           final info = result['video_info'] ?? result;
           if (info is Map<String, dynamic>) {
@@ -182,6 +203,12 @@ abstract final class BangumiRoaming {
             }
           }
         }
+      }
+      if (body is Map<String, dynamic> && body['code'] == -101) {
+        return const Error('漫游服务未接受账号令牌，请在 PiliCat 重新登录后重试');
+      }
+      if (body is Map<String, dynamic> && body['code'] == -3) {
+        return const Error('漫游服务拒绝了安卓接口签名');
       }
       if (body is Map<String, dynamic> &&
           (body['code'] == -10403 ||

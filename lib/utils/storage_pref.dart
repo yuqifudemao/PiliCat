@@ -559,6 +559,10 @@ abstract final class Pref {
   static bool get removeBlockedRcmd =>
       _setting.get(SettingBoxKey.removeBlockedRcmd, defaultValue: false);
 
+  static bool get bangumiAppAuth =>
+      _setting.get(SettingBoxKey.bangumiAppAuth, defaultValue: false);
+  static String get bangumiAppArea =>
+      _setting.get(SettingBoxKey.bangumiAppArea, defaultValue: 'tw');
   static String get bangumiSearchUrl =>
       _setting.get(SettingBoxKey.bangumiSearchUrl, defaultValue: '');
   static String get bangumiRoamingUrl =>

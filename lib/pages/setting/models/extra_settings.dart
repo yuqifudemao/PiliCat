@@ -286,6 +286,40 @@ List<SettingsModel> get extraSettings => [
     leading: const Icon(Icons.public),
     onTap: _showBangumiRoamingDialog,
   ),
+  const SwitchModel(
+    title: '哔哩漫游安卓解析授权',
+    subtitle: '开启后将播放账号访问令牌发送给 bili.nepnep.moe，用于解析受限番剧',
+    leading: Icon(Icons.verified_user_outlined),
+    setKey: SettingBoxKey.bangumiAppAuth,
+    defaultVal: false,
+  ),
+  NormalModel(
+    title: '安卓解析地区',
+    getSubtitle: () => Pref.bangumiAppArea == 'hk' ? '香港' : '台湾',
+    leading: const Icon(Icons.public),
+    onTap: (context, setState) async {
+      final area = await showDialog<String>(
+        context: context,
+        builder: (context) => SimpleDialog(
+          title: const Text('安卓解析地区'),
+          children: [
+            SimpleDialogOption(
+              onPressed: () => Get.back(result: 'tw'),
+              child: const Text('台湾'),
+            ),
+            SimpleDialogOption(
+              onPressed: () => Get.back(result: 'hk'),
+              child: const Text('香港'),
+            ),
+          ],
+        ),
+      );
+      if (area != null) {
+        await GStorage.setting.put(SettingBoxKey.bangumiAppArea, area);
+        if (context.mounted) setState();
+      }
+    },
+  ),
   NormalModel(
     title: '外番搜索服务',
     getSubtitle: () => Pref.bangumiSearchUrl.isEmpty ? '未配置' : '已配置搜索服务',

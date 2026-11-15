@@ -273,7 +273,7 @@ abstract final class VideoHttp {
       final original = _parseVideoErr(code, message);
       if (videoType != .pgc ||
           epid == null ||
-          Pref.bangumiRoamingUrl.isEmpty ||
+          (!Pref.bangumiAppAuth && Pref.bangumiRoamingUrl.isEmpty) ||
           !BangumiRoaming.isRegionRestricted(code, message)) {
         return Error(original);
       }
