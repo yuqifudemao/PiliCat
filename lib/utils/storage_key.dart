@@ -305,6 +305,7 @@ abstract final class SettingBoxKey {
       danmakuStrokeWidth = 'strokeWidth',
       danmakuFontWeight = 'fontWeight';
 
+  static const String bangumiRoamingUrl = 'bangumiRoamingUrl';
   static const String systemProxyHost = 'systemProxyHost',
       systemProxyPort = 'systemProxyPort';
 

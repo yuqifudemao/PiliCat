@@ -4,6 +4,7 @@ import 'package:PiliPlus/common/constants.dart';
 import 'package:PiliPlus/grpc/bilibili/main/community/reply/v1.pb.dart'
     show ReplyInfo;
 import 'package:PiliPlus/http/api.dart';
+import 'package:PiliPlus/http/bangumi_roaming.dart';
 import 'package:PiliPlus/http/browser_ua.dart';
 import 'package:PiliPlus/http/constants.dart';
 import 'package:PiliPlus/http/init.dart';
@@ -265,6 +266,27 @@ abstract final class VideoHttp {
     bool voiceBalance = false,
     bool fallback = false,
   }) async {
+    Future<LoadingState<PlayUrlModel>> playbackError(
+      int? code,
+      String? message,
+    ) async {
+      final original = _parseVideoErr(code, message);
+      if (videoType != .pgc ||
+          epid == null ||
+          Pref.bangumiRoamingUrl.isEmpty ||
+          !BangumiRoaming.isRegionRestricted(code, message)) {
+        return Error(original);
+      }
+      return BangumiRoaming.playUrl(
+        address: Pref.bangumiRoamingUrl,
+        episodeId: epid.toString(),
+        cid: cid,
+        qn: qn,
+        avid: avid,
+        bvid: bvid,
+      );
+    }
+
     final dmImgStr = Utils.base64EncodeRandomString(16, 64);
     final dmCoverImgStr = Utils.base64EncodeRandomString(32, 128);
     final params = await WbiSign.makSign({
@@ -339,7 +361,7 @@ abstract final class VideoHttp {
             } else {
               final reason = result['not_playable_reason'];
               if (reason != null) {
-                return Error(_parseVideoErr(reason['code'], reason['message']));
+                return await playbackError(reason['code'], reason['message']);
               } else {
                 return Error(result.toString());
               }
@@ -373,7 +395,7 @@ abstract final class VideoHttp {
           fallback: fallback,
         );
       }
-      return Error(_parseVideoErr(res.data['code'], res.data['message']));
+      return await playbackError(res.data['code'], res.data['message']);
     } catch (e, s) {
       return Error('$e\n\n$s');
     }

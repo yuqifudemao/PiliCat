@@ -559,6 +559,8 @@ abstract final class Pref {
   static bool get removeBlockedRcmd =>
       _setting.get(SettingBoxKey.removeBlockedRcmd, defaultValue: false);
 
+  static String get bangumiRoamingUrl =>
+      _setting.get(SettingBoxKey.bangumiRoamingUrl, defaultValue: '');
   static String get systemProxyHost =>
       _setting.get(SettingBoxKey.systemProxyHost, defaultValue: '');
 

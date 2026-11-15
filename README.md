@@ -26,6 +26,12 @@ PiliCat 由「PiliNara 个人版」更名而来。
 
 个人版也继承了上游的双语字幕、应用内小窗、弹幕过滤和离线缓存等功能。完整功能清单与其他平台的安装说明见 [PiliNara 上游文档](https://github.com/Starfallan/PiliNara#readme)。
 
+## 番剧漫游
+
+在「设置 → 其它设置 → 番剧漫游」填入自有或可信的 HTTPS 解析地址。可以填服务根地址，也可以填完整的 Web 播放接口。服务如果要求地区参数，可随地址填写，例如 `https://example.com?area=hk`。留空保存即可关闭。
+
+打开能加载详情的 B 站番剧。当原播放接口返回地区限制时，PiliCat 会通过该服务重试播放地址。解析请求会发送番剧集号等播放参数，应用不会附带 B 站登录 Cookie 或 Token。该功能需要服务支持 `/pgc/player/web/playurl` 或兼容的 Web 播放响应。
+
 <details>
 <summary>查看上游界面截图</summary>
 

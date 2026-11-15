@@ -8,6 +8,7 @@ import 'package:PiliPlus/common/widgets/gesture/horizontal_drag_gesture_recogniz
     show deviceTouchSlop, touchSlopH;
 import 'package:PiliPlus/common/widgets/image_grid/image_grid_view.dart'
     show ImageGridView, ImageModel;
+import 'package:PiliPlus/http/bangumi_roaming.dart';
 import 'package:PiliPlus/http/fav.dart';
 import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/models/common/sponsor_block/skip_type.dart';
@@ -280,6 +281,12 @@ List<SettingsModel> get extraSettings => [
     ),
   ),
   NormalModel(
+    title: '番剧漫游',
+    getSubtitle: () => Pref.bangumiRoamingUrl.isEmpty ? '未配置' : '已配置解析服务',
+    leading: const Icon(Icons.public),
+    onTap: _showBangumiRoamingDialog,
+  ),
+  NormalModel(
     title: '最大缓存大小',
     getSubtitle: () => '当前最大缓存大小: 「${Pref.maxCacheSize.formatSize}」',
     leading: const Icon(Icons.delete_outlined),
@@ -521,6 +528,52 @@ Future<void> _showReplyDelayDialog(
     await GStorage.setting.put(SettingBoxKey.retryDelay, res.toInt());
     setState();
     SmartDialog.showToast('重启生效');
+  }
+}
+
+Future<void> _showBangumiRoamingDialog(
+  BuildContext context,
+  VoidCallback setState,
+) async {
+  var address = Pref.bangumiRoamingUrl;
+  final formKey = GlobalKey<FormState>();
+  final result = await showDialog<String>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('番剧漫游解析地址'),
+      content: Form(
+        key: formKey,
+        child: TextFormField(
+          initialValue: address,
+          keyboardType: TextInputType.url,
+          decoration: const InputDecoration(
+            hintText: 'https://example.com?area=hk',
+            helperText: '仅在番剧播放遇到地区限制时使用，留空关闭',
+            helperMaxLines: 2,
+          ),
+          onChanged: (value) => address = value.trim(),
+          validator: (value) {
+            if (address.isNotEmpty && BangumiRoaming.endpoint(address) == null) {
+              return '请输入有效的 HTTPS 解析地址';
+            }
+            return null;
+          },
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: Get.back, child: const Text('取消')),
+        TextButton(
+          onPressed: () {
+            if (formKey.currentState!.validate()) Get.back(result: address);
+          },
+          child: const Text('保存'),
+        ),
+      ],
+    ),
+  );
+  if (result != null) {
+    await GStorage.setting.put(SettingBoxKey.bangumiRoamingUrl, result);
+    if (context.mounted) setState();
   }
 }
 
