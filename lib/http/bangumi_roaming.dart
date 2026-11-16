@@ -89,6 +89,7 @@ abstract final class BangumiRoaming {
     required String area,
     required String keyword,
     required String page,
+    bool films = false,
   }) async {
     if (address.isEmpty) {
       return const Error('请在设置 → 哔哩漫游中配置该地区的解析服务器');
@@ -104,7 +105,7 @@ abstract final class BangumiRoaming {
       path: '$prefix/x/web-interface/search/type',
       queryParameters: {
         ...playback.queryParameters,
-        'search_type': 'media_bangumi',
+        'search_type': films ? 'media_ft' : 'media_bangumi',
         'keyword': keyword,
         'page': page,
         'area': area,

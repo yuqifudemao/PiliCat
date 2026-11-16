@@ -169,7 +169,10 @@ class _SearchResultPageState extends State<SearchResultPage>
                         .media_bangumi ||
                         .media_ft ||
                         .taiwanBangumi ||
-                        .hongKongBangumi => SearchPgcPanel(
+                        .hongKongBangumi ||
+                        .thailandBangumi ||
+                        .taiwanFilm ||
+                        .hongKongFilm => SearchPgcPanel(
                           tag: _tag,
                           searchType: item,
                           keyword: _searchResultController.keyword,

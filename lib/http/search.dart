@@ -63,8 +63,9 @@ abstract final class SearchHttp {
     required ValueChanged<String> onSuccess,
   }) async {
     final area = switch (searchType) {
-      .taiwanBangumi => 'tw',
-      .hongKongBangumi => 'hk',
+      .taiwanBangumi || .taiwanFilm => 'tw',
+      .hongKongBangumi || .hongKongFilm => 'hk',
+      .thailandBangumi => 'th',
       _ => null,
     };
     if (area != null) {
@@ -75,6 +76,7 @@ abstract final class SearchHttp {
             ? Pref.bangumiSearchUrl
             : Pref.bangumiRegionServers[area] ?? '',
         area: area,
+        films: searchType == .taiwanFilm || searchType == .hongKongFilm,
         keyword: keyword,
         page: page.toString(),
       );

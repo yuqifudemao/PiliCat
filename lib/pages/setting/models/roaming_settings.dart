@@ -43,6 +43,17 @@ List<SettingsModel> get roamingSettings => [
     setKey: SettingBoxKey.bangumiUposForAll,
   ),
   WidgetModel(
+    searchTitle: '哔哩漫游高级设置',
+    child: ExpansionTile(
+      leading: const Icon(Icons.settings_outlined),
+      title: const Text('高级设置'),
+      children: _roamingAdvancedSettings.map((item) => item.widget).toList(),
+    ),
+  ),
+];
+
+List<SettingsModel> get _roamingAdvancedSettings => [
+  WidgetModel(
     searchTitle: '哔哩漫游安卓解析授权',
     child: StreamBuilder(
       stream: GStorage.setting.watch(key: SettingBoxKey.bangumiRegionServers),
@@ -191,7 +202,7 @@ Future<void> _showBangumiRoamingDialog(
           decoration: InputDecoration(
             hintText: 'https://example.com',
             helperText: search
-                ? '仅在台、港搜索标签使用，留空关闭'
+                ? '供地区搜索标签使用，留空时跟随地区服务器'
                 : '仅在番剧详情或播放需要漫游时使用，留空关闭',
             helperMaxLines: 2,
           ),
