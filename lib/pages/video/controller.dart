@@ -995,22 +995,23 @@ class VideoDetailController extends GetxController
 
     final audio = data.dash?.audio
         ?.firstWhereOrNull((item) => item.id == currentAudioQa?.code);
-    final audioCandidates = {
-      if (audioUrl case final url? when url.isNotEmpty) url,
-      ...?audio?.playUrls,
-    };
+    final originalAudioUrls =
+        audio?.playUrls.where((url) => url.isNotEmpty).toList() ??
+        const <String>[];
+    final preferred = (video: videoUrl!, audio: audioUrl);
     final backups = <({String video, String? audio})>{};
-    for (final video in {videoUrl!, ...firstVideo.playUrls}) {
+    for (final video in firstVideo.playUrls.where((url) => url.isNotEmpty)) {
       final videoHost = Uri.tryParse(video)?.host;
-      final matchedAudio = audioCandidates.firstWhereOrNull(
+      final matchedAudio = originalAudioUrls.firstWhereOrNull(
         (url) => Uri.tryParse(url)?.host == videoHost,
       );
-      final candidate = (video: video, audio: matchedAudio ?? audioUrl);
-      if (candidate != (video: videoUrl!, audio: audioUrl)) {
-        backups.add(candidate);
-      }
+      final candidate = (
+        video: video,
+        audio: matchedAudio ?? originalAudioUrls.firstOrNull ?? audioUrl,
+      );
+      if (candidate != preferred) backups.add(candidate);
     }
-    for (final audio in audioCandidates) {
+    for (final audio in originalAudioUrls) {
       if (audio != audioUrl) backups.add((video: videoUrl!, audio: audio));
     }
     return backups.toList();

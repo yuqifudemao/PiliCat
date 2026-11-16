@@ -165,10 +165,17 @@ class CdnSpeedTester {
   String _describeError(DioException error) {
     final statusCode = error.response?.statusCode;
     if (statusCode != null && 400 <= statusCode && statusCode < 500) {
-      return '此视频可能无法替换为该CDN';
+      return '节点拒绝请求（HTTP $statusCode）';
     }
-    final message = error.toString();
-    return message.isEmpty ? '测速失败' : message;
+    if (statusCode != null) return '测速失败（HTTP $statusCode）';
+    return switch (error.type) {
+      DioExceptionType.connectionTimeout ||
+      DioExceptionType.sendTimeout ||
+      DioExceptionType.receiveTimeout => '测速超时',
+      DioExceptionType.badCertificate => '证书校验失败',
+      DioExceptionType.connectionError => '连接失败',
+      _ => '测速请求失败',
+    };
   }
 
   void dispose() {

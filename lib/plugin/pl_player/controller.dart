@@ -1339,6 +1339,8 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
           (VideoUtils.customCDNUrl == null ? VideoUtils.cdnService.name : '自定义');
       PlaybackDiagnostics.record(
         '打开媒体 · ${_videoType.name} · CDN 策略 $node · '
+        '视频 ${_mediaHost(dataSource.videoSource)} · '
+        '音频 ${_mediaHost(dataSource.audioSource)} · '
         '备用 ${dataSource.backups.length} 条',
       );
     }
@@ -1370,6 +1372,15 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     return null;
   }
 
+  String _mediaHost(String? url) {
+    if (url == null || url.isEmpty) return '无';
+    final uri = Uri.tryParse(url);
+    return uri != null && (uri.scheme == 'https' || uri.scheme == 'http') &&
+            uri.host.isNotEmpty
+        ? uri.host
+        : '未知';
+  }
+
   Future<void> _retryNetworkSource(NetworkSource failedSource) async {
     if (!identical(dataSource, failedSource) || _switchingBackupSource) return;
     final player = _videoPlayerController;
@@ -1388,7 +1399,8 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     _lastDiagnosticError = null;
     _startupTimer?.start();
     PlaybackDiagnostics.record(
-      '切换备用 CDN · $_backupSourceIndex/${failedSource.backups.length}',
+      '切换备用 CDN · $_backupSourceIndex/${failedSource.backups.length} · '
+      '视频 ${_mediaHost(source.video)} · 音频 ${_mediaHost(source.audio)}',
     );
     final audio = source.audio;
     final video = source.video;
