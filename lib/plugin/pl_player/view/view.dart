@@ -2026,7 +2026,7 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
           ),
         ),
 
-        if (!isLive && !videoDetailController.isFileSource)
+        if (isFullScreen && !isLive && !videoDetailController.isFileSource)
           Positioned(
             top: 60,
             right: 12,
@@ -2034,10 +2034,10 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
               top: true,
               child: IgnorePointer(
                 child: FadeTransition(
-                opacity: _animationController,
-                child: PlaybackDownloadSpeed(
-                  controller: plPlayerController,
-                  alwaysVisible: true,
+                  opacity: _animationController,
+                  child: PlaybackDownloadSpeed(
+                    controller: plPlayerController,
+                    alwaysVisible: true,
                   ),
                 ),
               ),
