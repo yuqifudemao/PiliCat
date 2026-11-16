@@ -185,10 +185,17 @@ abstract final class BangumiRoaming {
           'force_host': '2',
         } else 'module': 'bangumi',
       };
-      if (useApp) AppSign.appSign(params);
-      final requestUri = useApp
-          ? uri.replace(query: AppSign.makeQuery(params))
-          : uri.replace(queryParameters: params);
+      final Uri requestUri;
+      if (useApp) {
+        AppSign.appSign(params);
+        final signature = params.remove('sign');
+        // The resolver expects the signature after the signed query.
+        requestUri = uri.replace(
+          query: '${AppSign.makeQuery(params)}&sign=$signature',
+        );
+      } else {
+        requestUri = uri.replace(queryParameters: params);
+      }
       final response = await client.getUri<dynamic>(requestUri);
       final body = response.data;
       if (body is Map<String, dynamic> && body['code'] == 0) {
