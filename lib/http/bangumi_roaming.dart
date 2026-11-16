@@ -204,14 +204,18 @@ abstract final class BangumiRoaming {
       }
       final code = int.tryParse(body['code']?.toString() ?? '');
       if (code == 0) {
-        final result = body['result'] ?? body['data'] ?? body;
-        if (result is Map<String, dynamic>) {
-          final info = result['video_info'] ?? result;
-          if (info is Map<String, dynamic>) {
-            final playback = PlayUrlModel.fromJson(info);
-            if (playback.dash?.video?.isNotEmpty == true ||
-                playback.durl?.isNotEmpty == true) {
-              return Success(playback);
+        final result = body['result'];
+        final data = body['data'];
+        for (final envelope in [body, result, data]) {
+          if (envelope is! Map<String, dynamic>) continue;
+          for (final info in [envelope, envelope['video_info']]) {
+            if (info is! Map<String, dynamic>) continue;
+            final dash = info['dash'];
+            final video = dash is Map<String, dynamic> ? dash['video'] : null;
+            final durl = info['durl'];
+            if ((video is List && video.isNotEmpty) ||
+                (durl is List && durl.isNotEmpty)) {
+              return Success(PlayUrlModel.fromJson(info));
             }
           }
         }
