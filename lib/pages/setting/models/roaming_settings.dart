@@ -18,6 +18,24 @@ List<SettingsModel> get roamingSettings => [
     setKey: SettingBoxKey.bangumiRoamingEnabled,
     defaultVal: Pref.bangumiRoamingEnabled,
   ),
+  WidgetModel(
+    searchTitle: '哔哩漫游安卓解析授权',
+    child: StreamBuilder(
+      stream: GStorage.setting.watch(key: SettingBoxKey.bangumiRegionServers),
+      builder: (context, _) {
+        final servers = Pref.bangumiRegionServers.values.toSet().join('、');
+        return SetSwitchItem(
+          key: ValueKey(servers),
+          title: '哔哩漫游安卓解析授权',
+          subtitle: servers.isEmpty
+              ? '请先设置解析服务器'
+              : '开启后将播放账号访问令牌发送至配置的服务器：$servers',
+          leading: const Icon(Icons.verified_user_outlined),
+          setKey: SettingBoxKey.bangumiAppAuth,
+        );
+      },
+    ),
+  ),
   NormalModel(
     title: '设置解析服务器',
     subtitle: '分别设置中国大陆、香港、台湾和泰国/东南亚服务器',
@@ -53,24 +71,6 @@ List<SettingsModel> get roamingSettings => [
 ];
 
 List<SettingsModel> get _roamingAdvancedSettings => [
-  WidgetModel(
-    searchTitle: '哔哩漫游安卓解析授权',
-    child: StreamBuilder(
-      stream: GStorage.setting.watch(key: SettingBoxKey.bangumiRegionServers),
-      builder: (context, _) {
-        final servers = Pref.bangumiRegionServers.values.toSet().join('、');
-        return SetSwitchItem(
-          key: ValueKey(servers),
-          title: '哔哩漫游安卓解析授权',
-          subtitle: servers.isEmpty
-              ? '请先设置解析服务器'
-              : '开启后将播放账号访问令牌发送至配置的服务器：$servers',
-          leading: const Icon(Icons.verified_user_outlined),
-          setKey: SettingBoxKey.bangumiAppAuth,
-        );
-      },
-    ),
-  ),
   NormalModel(
     title: '播放诊断日志',
     subtitle: '查看、复制或清空最近的播放记录',
