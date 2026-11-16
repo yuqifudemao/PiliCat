@@ -1381,7 +1381,10 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
         : '未知';
   }
 
-  Future<void> _retryNetworkSource(NetworkSource failedSource) async {
+  Future<void> _retryNetworkSource(
+    NetworkSource failedSource, {
+    Duration? resumePosition,
+  }) async {
     if (!identical(dataSource, failedSource) || _switchingBackupSource) return;
     final player = _videoPlayerController;
     if (player == null) return;
@@ -1414,7 +1417,8 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     try {
       final nextMedia = Media(
         url,
-        start: player.current.isEmpty ? media.start : player.state.position,
+        start: resumePosition ??
+            (player.current.isEmpty ? media.start : player.state.position),
         extras: media.extras,
       );
       _lastBackupMedia = nextMedia;
@@ -1632,18 +1636,33 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
             PlaybackDiagnostics.record('播放器错误 · $category');
           }
         }
+        final tcpReadFailed = event.startsWith('tcp: ffurl_read returned ');
         if ((hasBackups && tlsHandshakeEnded) ||
             event.startsWith("Failed to open https://") ||
             event.startsWith("Can not open external file https://") ||
-            //tcp: ffurl_read returned 0xdfb9b0bb
-            //tcp: ffurl_read returned 0xffffff99
-            event.startsWith('tcp: ffurl_read returned ')) {
+            tcpReadFailed) {
           if (failedSource is NetworkSource && hasBackups) {
             final failedAttempt = _backupSourceIndex;
-            Timer(const Duration(seconds: 1), () {
-              if (identical(dataSource, failedSource) &&
-                  _backupSourceIndex == failedAttempt &&
-                  buffered.value == 0 &&
+            final failedPosition = position.value;
+            final midstreamReadFailure = tcpReadFailed &&
+                _startupTimer == null &&
+                player.state.playing;
+            Timer(Duration(seconds: midstreamReadFailure ? 3 : 1), () {
+              if (!identical(dataSource, failedSource) ||
+                  _backupSourceIndex != failedAttempt) {
+                return;
+              }
+              if (midstreamReadFailure) {
+                if (isBuffering.value &&
+                    player.state.playing &&
+                    position.value == failedPosition) {
+                  PlaybackDiagnostics.record('播放中读流中断，尝试备用 CDN');
+                  _retryNetworkSource(
+                    failedSource,
+                    resumePosition: Duration(seconds: failedPosition),
+                  );
+                }
+              } else if (buffered.value == 0 &&
                   (isBuffering.value ||
                       (tlsHandshakeEnded && player.current.isEmpty))) {
                 _retryNetworkSource(failedSource);
