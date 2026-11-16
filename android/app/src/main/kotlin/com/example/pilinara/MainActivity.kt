@@ -1,8 +1,10 @@
 package com.example.pilinara
 
 import android.content.res.Configuration
+import android.net.TrafficStats
 import android.os.Build
 import android.os.Bundle
+import android.os.Process
 import android.view.WindowManager.LayoutParams
 import com.ryanheise.audioservice.AudioServiceActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -17,6 +19,10 @@ class MainActivity : AudioServiceActivity() {
         methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "PiliNara")
         methodChannel.setMethodCallHandler { call, result ->
             when (call.method) {
+                "getAppRxBytes" -> {
+                    val bytes = TrafficStats.getUidRxBytes(Process.myUid())
+                    result.success(bytes.takeIf { it >= 0 })
+                }
                 else -> result.notImplemented()
             }
         }
