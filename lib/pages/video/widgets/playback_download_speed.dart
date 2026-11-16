@@ -8,9 +8,14 @@ import 'package:flutter/services.dart' show MissingPluginException, PlatformExce
 import 'package:media_kit/media_kit.dart' show NativePlayer;
 
 class PlaybackDownloadSpeed extends StatefulWidget {
-  const PlaybackDownloadSpeed({super.key, required this.controller});
+  const PlaybackDownloadSpeed({
+    super.key,
+    required this.controller,
+    this.alwaysVisible = false,
+  });
 
   final PlPlayerController controller;
+  final bool alwaysVisible;
 
   @override
   State<PlaybackDownloadSpeed> createState() => _PlaybackDownloadSpeedState();
@@ -29,13 +34,13 @@ class _PlaybackDownloadSpeedState extends State<PlaybackDownloadSpeed> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final visible = TickerMode.of(context);
-    if (visible && _timer == null) {
+    if ((visible || widget.alwaysVisible) && _timer == null) {
       _timer = Timer.periodic(
         const Duration(seconds: 1),
         (_) => unawaited(_update()),
       );
       unawaited(_update());
-    } else if (!visible) {
+    } else if (!visible && !widget.alwaysVisible) {
       _timer?.cancel();
       _timer = null;
       _previousBytes = null;
@@ -117,11 +122,20 @@ class _PlaybackDownloadSpeedState extends State<PlaybackDownloadSpeed> {
       message: _appRate
           ? '当前 PiliCat 的接收速度，包含视频及 PiliCat 的其他请求'
           : '当前视频下载速度',
-      child: Text(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.55),
+          borderRadius: const BorderRadius.all(Radius.circular(16)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+          child: Text(
         '${_appRate ? 'App 网速' : '网速'} ${_label ?? '—'}',
-        style: TextStyle(
-          fontSize: 12,
-          color: Theme.of(context).colorScheme.outline,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Colors.white,
+            ),
+          ),
         ),
       ),
     );

@@ -38,6 +38,7 @@ import 'package:PiliPlus/pages/video/introduction/ugc/controller.dart';
 import 'package:PiliPlus/pages/video/post_panel/popup_menu_text.dart';
 import 'package:PiliPlus/pages/video/post_panel/view.dart';
 import 'package:PiliPlus/pages/video/widgets/header_control.dart';
+import 'package:PiliPlus/pages/video/widgets/playback_download_speed.dart';
 import 'package:PiliPlus/plugin/pl_player/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/models/bottom_control_type.dart';
 import 'package:PiliPlus/plugin/pl_player/models/data_status.dart';
@@ -2024,6 +2025,16 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
             ),
           ),
         ),
+
+        if (!isLive && !videoDetailController.isFileSource)
+          Positioned(
+            top: 52,
+            right: 12,
+            child: PlaybackDownloadSpeed(
+              controller: plPlayerController,
+              alwaysVisible: true,
+            ),
+          ),
 
         // 头部、底部控制条
         Positioned.fill(
