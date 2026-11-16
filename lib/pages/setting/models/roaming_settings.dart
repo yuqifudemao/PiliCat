@@ -2,7 +2,6 @@ import 'package:PiliPlus/http/bangumi_roaming.dart';
 import 'package:PiliPlus/pages/setting/models/model.dart';
 import 'package:PiliPlus/pages/setting/pages/playback_diagnostics.dart';
 import 'package:PiliPlus/pages/setting/widgets/cdn_select_dialog.dart';
-import 'package:PiliPlus/pages/setting/widgets/switch_item.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
@@ -18,23 +17,12 @@ List<SettingsModel> get roamingSettings => [
     setKey: SettingBoxKey.bangumiRoamingEnabled,
     defaultVal: Pref.bangumiRoamingEnabled,
   ),
-  WidgetModel(
-    searchTitle: '哔哩漫游安卓解析授权',
-    child: StreamBuilder(
-      stream: GStorage.setting.watch(key: SettingBoxKey.bangumiRegionServers),
-      builder: (context, _) {
-        final servers = Pref.bangumiRegionServers.values.toSet().join('、');
-        return SetSwitchItem(
-          key: ValueKey(servers),
-          title: '哔哩漫游安卓解析授权',
-          subtitle: servers.isEmpty
-              ? '请先设置解析服务器'
-              : '开启后将播放账号访问令牌发送至配置的服务器：$servers',
-          leading: const Icon(Icons.verified_user_outlined),
-          setKey: SettingBoxKey.bangumiAppAuth,
-        );
-      },
-    ),
+  NormalModel(
+    title: '安卓解析授权',
+    getSubtitle: () =>
+        '已授权 ${Pref.bangumiAuthorizedServers.length} 个解析服务器',
+    leading: const Icon(Icons.verified_user_outlined),
+    onTap: _showServerAuthorizations,
   ),
   NormalModel(
     title: '设置解析服务器',
@@ -92,6 +80,65 @@ List<SettingsModel> get _roamingAdvancedSettings => [
         _showBangumiRoamingDialog(context, setState, search: true),
   ),
 ];
+
+Future<void> _showServerAuthorizations(
+  BuildContext context,
+  VoidCallback setState,
+) async {
+  final servers = Pref.bangumiRegionServers.values.toSet();
+  final selected = Pref.bangumiAuthorizedServers;
+  final result = await showDialog<Set<String>>(
+    context: context,
+    builder: (context) => StatefulBuilder(
+      builder: (context, updateDialog) => AlertDialog(
+        title: const Text('安卓解析授权'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (servers.isEmpty)
+                const Text('请先在「设置解析服务器」中添加地址。')
+              else
+                const Text('勾选并保存后，安卓解析会向所选服务器发送 B 站播放账号的访问令牌。请只勾选你信任的地址。'),
+              for (final address in servers)
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(address),
+                  value: selected.contains(address),
+                  onChanged: (checked) => updateDialog(() {
+                    if (checked == true) {
+                      selected.add(address);
+                    } else {
+                      selected.remove(address);
+                    }
+                  }),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          if (servers.isNotEmpty)
+            TextButton(
+              onPressed: () => Navigator.pop(context, selected),
+              child: const Text('保存授权'),
+            ),
+        ],
+      ),
+    ),
+  );
+  if (result == null) return;
+  final current = Pref.bangumiRegionServers.values.toSet();
+  await GStorage.setting.put(
+    SettingBoxKey.bangumiAuthorizedServers,
+    result.intersection(current).toList(),
+  );
+  if (context.mounted) setState();
+}
 
 Future<void> _showUpos(
   BuildContext context,
@@ -178,7 +225,10 @@ Future<void> _showRegionServers(
       Pref.bangumiRegions.keys.every((area) => original[area] == result[area])) {
     return;
   }
-  await GStorage.setting.put(SettingBoxKey.bangumiAppAuth, false);
+  await GStorage.setting.put(
+    SettingBoxKey.bangumiAuthorizedServers,
+    Pref.bangumiAuthorizedServers.intersection(result.values.toSet()).toList(),
+  );
   await GStorage.setting.put(SettingBoxKey.bangumiRegionServers, result);
   if (context.mounted) setState();
 }

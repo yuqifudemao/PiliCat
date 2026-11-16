@@ -191,7 +191,7 @@ abstract final class BangumiRoaming {
     LoadingState<PlayUrlModel>? failure;
     for (final MapEntry(key: area, value: server) in regionalServers) {
       if (!Pref.bangumiRoamingEnabled) break;
-      final authorized = Pref.bangumiAppAuth &&
+      final authorized = Pref.bangumiAuthorizedServers.contains(server) &&
           Pref.bangumiRegionServers[area] == server;
       final timer = Stopwatch()..start();
       PlaybackDiagnostics.record('开始漫游解析 · $area · ${authorized ? '安卓' : '网页'}');

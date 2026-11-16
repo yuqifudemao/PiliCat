@@ -596,6 +596,14 @@ abstract final class Pref {
   static const defaultBangumiAppUrl = 'https://bili.nepnep.moe';
   static String get bangumiAppUrl =>
       _setting.get(SettingBoxKey.bangumiAppUrl, defaultValue: defaultBangumiAppUrl);
+  static Set<String> get bangumiAuthorizedServers {
+    final saved = _setting.get(SettingBoxKey.bangumiAuthorizedServers);
+    if (saved is! List) return <String>{};
+    return saved.whereType<String>().toSet().intersection(
+      bangumiRegionServers.values.toSet(),
+    );
+  }
+
   static bool get bangumiAppAuth =>
       _setting.get(SettingBoxKey.bangumiAppAuth, defaultValue: false);
   static String get bangumiAppArea =>

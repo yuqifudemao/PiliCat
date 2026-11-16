@@ -310,6 +310,7 @@ abstract final class SettingBoxKey {
   static const String bangumiUpos = 'bangumiUpos';
   static const String bangumiUposForAll = 'bangumiUposForAll';
   static const String bangumiAppUrl = 'bangumiAppUrl';
+  static const String bangumiAuthorizedServers = 'bangumiAuthorizedServers';
   static const String bangumiAppAuth = 'bangumiAppAuth';
   static const String bangumiAppArea = 'bangumiAppArea';
   static const String bangumiSearchUrl = 'bangumiSearchUrl';
