@@ -198,7 +198,12 @@ abstract final class BangumiRoaming {
       }
       final response = await client.getUri<dynamic>(requestUri);
       final body = response.data;
-      if (body is Map<String, dynamic> && body['code'] == 0) {
+      final mode = useApp ? '安卓解析' : '网页解析';
+      if (body is! Map<String, dynamic>) {
+        return Error('$mode返回了非 JSON 对象');
+      }
+      final code = int.tryParse(body['code']?.toString() ?? '');
+      if (code == 0) {
         final result = body['result'] ?? body['data'] ?? body;
         if (result is Map<String, dynamic>) {
           final info = result['video_info'] ?? result;
@@ -210,20 +215,23 @@ abstract final class BangumiRoaming {
             }
           }
         }
+        return Error('$mode返回成功，但没有视频流（状态码 0）');
       }
-      if (body is Map<String, dynamic> && body['code'] == -101) {
+      if (code == -101) {
         return const Error('漫游服务未接受账号令牌，请在 PiliCat 重新登录后重试');
       }
-      if (body is Map<String, dynamic> && body['code'] == -3) {
+      if (code == -3) {
         return const Error('漫游服务拒绝了安卓接口签名');
       }
-      if (body is Map<String, dynamic> &&
-          (body['code'] == -10403 ||
-              isRegionRestricted(body['code'] is int ? body['code'] : null,
-                  body['message'] is String ? body['message'] : null))) {
+      final message = body['message'];
+      if (code == -10403 ||
+          isRegionRestricted(code, message is String ? message : null)) {
         return const Error('当前漫游线路也受地区限制，无法播放这一集');
       }
-      return Error('番剧漫游解析服务未返回可播放的视频');
+      // Display only the numeric status. Server text can contain request data.
+      return Error(code == null
+          ? '$mode响应缺少有效状态码'
+          : '$mode服务拒绝了播放请求（状态码 $code）');
     } on DioException {
       return Error('无法从番剧漫游解析服务获取视频，请检查地址或线路');
     } on Object {
