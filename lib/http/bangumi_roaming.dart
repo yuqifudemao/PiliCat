@@ -299,14 +299,18 @@ abstract final class BangumiRoaming {
             if (info is! Map<String, dynamic>) continue;
             if (area == 'th') {
               final international = _internationalVideo(info);
-              if (international != null) return Success(international);
+              if (international != null) {
+                return Success(international..preserveStreamUrls = true);
+              }
             }
             final dash = info['dash'];
             final video = dash is Map<String, dynamic> ? dash['video'] : null;
             final durl = info['durl'];
             if ((video is List && video.isNotEmpty) ||
                 (durl is List && durl.isNotEmpty)) {
-              return Success(PlayUrlModel.fromJson(info));
+              return Success(
+                PlayUrlModel.fromJson(info)..preserveStreamUrls = true,
+              );
             }
           }
         }

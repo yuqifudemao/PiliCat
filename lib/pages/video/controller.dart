@@ -955,6 +955,7 @@ class VideoDetailController extends GetxController
     firstVideo = findVideoByQa(currentVideoQa.code, setCodecs: true);
     videoUrl = VideoUtils.getCdnUrl(
       firstVideo.playUrls,
+      preserveStreamUrls: data.preserveStreamUrls,
       isBangumi: !isUgc,
     );
 
@@ -966,6 +967,7 @@ class VideoDetailController extends GetxController
       );
       audioUrl = VideoUtils.getCdnUrl(
         firstAudio.playUrls,
+        preserveStreamUrls: data.preserveStreamUrls,
         isBangumi: !isUgc,
         isAudio: true,
       );
@@ -1280,6 +1282,7 @@ class VideoDetailController extends GetxController
             for (var i in durl) {
               final video = VideoUtils.getCdnUrl(
                 i.playUrls,
+                preserveStreamUrls: data.preserveStreamUrls,
                 isBangumi: !isUgc,
               );
               sb.write('%${video.length}%$video,length=${i.length! / 1000};');
@@ -1288,6 +1291,7 @@ class VideoDetailController extends GetxController
           } else {
             videoUrl = VideoUtils.getCdnUrl(
               durl.single.playUrls,
+              preserveStreamUrls: data.preserveStreamUrls,
               isBangumi: !isUgc,
             );
           }
@@ -1350,6 +1354,7 @@ class VideoDetailController extends GetxController
       _setVideoHeight();
       videoUrl = VideoUtils.getCdnUrl(
         firstVideo.playUrls,
+        preserveStreamUrls: data.preserveStreamUrls,
         isBangumi: !isUgc,
       );
 
@@ -1362,6 +1367,7 @@ class VideoDetailController extends GetxController
         );
         audioUrl = VideoUtils.getCdnUrl(
           firstAudio.playUrls,
+          preserveStreamUrls: data.preserveStreamUrls,
           isBangumi: !isUgc,
           isAudio: true,
         );
@@ -2334,6 +2340,7 @@ class VideoDetailController extends GetxController
       }
       final url = VideoUtils.getCdnUrl(
         first.playUrls,
+        preserveStreamUrls: response.preserveStreamUrls,
         isBangumi: !isUgc,
       );
 

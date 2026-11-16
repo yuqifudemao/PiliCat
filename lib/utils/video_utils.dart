@@ -82,6 +82,7 @@ abstract final class VideoUtils {
     CDNService? defaultCDNService,
     String? customHost,
     bool applyCustomCDN = true,
+    bool preserveStreamUrls = false,
     bool isAudio = false,
     bool? isBangumi,
   }) {
@@ -97,6 +98,17 @@ abstract final class VideoUtils {
     customHost ??= applyCustomCDN ? customCDNUrl : null;
     if (isAudio && disableAudioCDN) {
       customHost = null;
+    }
+
+    if (preserveStreamUrls) {
+      final preferredHost = customHost ?? defaultCDNService.host;
+      if (preferredHost != null && !(isAudio && disableAudioCDN)) {
+        return urls.firstWhere(
+          (url) => Uri.tryParse(url)?.host == preferredHost,
+          orElse: () => urls.first,
+        );
+      }
+      return urls.first;
     }
 
     if (customHost == null && defaultCDNService == CDNService.baseUrl) {

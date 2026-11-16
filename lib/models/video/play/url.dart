@@ -25,6 +25,7 @@ class PlayUrlModel {
     this.lastPlayCid,
   });
 
+  bool preserveStreamUrls = false;
   String? from;
   String? result;
   String? message;
