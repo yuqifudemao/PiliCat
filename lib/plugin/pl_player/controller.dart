@@ -1337,7 +1337,9 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     if (!identical(dataSource, failedSource) || _switchingBackupSource) return;
     final player = _videoPlayerController;
     if (player == null) return;
-    final media = player.current.lastOrNull ?? _lastBackupMedia;
+    final media = player.current.isEmpty
+        ? _lastBackupMedia
+        : player.current.last;
     if (media == null) return;
     if (_backupSourceIndex >= failedSource.backups.length) {
       if (_backupSourceIndex++ != failedSource.backups.length) return;
