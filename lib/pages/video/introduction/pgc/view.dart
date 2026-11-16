@@ -20,6 +20,7 @@ import 'package:PiliPlus/pages/video/introduction/pgc/widgets/episode.dart';
 import 'package:PiliPlus/pages/video/introduction/pgc/widgets/season.dart';
 import 'package:PiliPlus/pages/video/introduction/pgc/widgets/section.dart';
 import 'package:PiliPlus/pages/video/introduction/ugc/widgets/action_item.dart';
+import 'package:PiliPlus/pages/video/widgets/playback_download_speed.dart';
 import 'package:PiliPlus/utils/extension/get_ext.dart';
 import 'package:PiliPlus/utils/num_utils.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
@@ -299,6 +300,10 @@ class _PgcIntroPageState extends State<PgcIntroPage> {
         children: [
           StatWidget(type: .play, value: item.stat!.view),
           StatWidget(type: .danmaku, value: item.stat!.danmaku),
+          if (!videoDetailCtr.isFileSource)
+            PlaybackDownloadSpeed(
+              controller: videoDetailCtr.plPlayerController,
+            ),
           if (!isPortrait) ...desc(),
         ],
       );

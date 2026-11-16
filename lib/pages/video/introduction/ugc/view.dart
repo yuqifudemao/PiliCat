@@ -28,6 +28,7 @@ import 'package:PiliPlus/pages/video/introduction/ugc/controller.dart';
 import 'package:PiliPlus/pages/video/introduction/ugc/widgets/action_item.dart';
 import 'package:PiliPlus/pages/video/introduction/ugc/widgets/page.dart';
 import 'package:PiliPlus/pages/video/introduction/ugc/widgets/season.dart';
+import 'package:PiliPlus/pages/video/widgets/playback_download_speed.dart';
 import 'package:PiliPlus/utils/app_scheme.dart';
 import 'package:PiliPlus/utils/bili_colors.dart';
 import 'package:PiliPlus/utils/date_utils.dart';
@@ -981,8 +982,10 @@ class _UgcIntroPanelState extends State<UgcIntroPanel> {
   );
 
   Widget _buildInfo(VideoStat? stat, int? pubdate) {
-    return Row(
+    return Wrap(
       spacing: 10,
+      runSpacing: 2,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         StatWidget(
           type: .play,
@@ -1014,6 +1017,10 @@ class _UgcIntroPanelState extends State<UgcIntroPanel> {
               '${introController.total.value}人在看',
               style: TextStyle(fontSize: 12, color: colorScheme.outline),
             ),
+          ),
+        if (!videoDetailCtr.isFileSource)
+          PlaybackDownloadSpeed(
+            controller: videoDetailCtr.plPlayerController,
           ),
       ],
     );
