@@ -559,6 +559,40 @@ abstract final class Pref {
   static bool get removeBlockedRcmd =>
       _setting.get(SettingBoxKey.removeBlockedRcmd, defaultValue: false);
 
+  static const bangumiRegions = {
+    'cn': '中国大陆',
+    'hk': '香港',
+    'tw': '台湾',
+    'th': '泰国/东南亚',
+  };
+
+  static bool get bangumiRoamingEnabled => _setting.get(
+    SettingBoxKey.bangumiRoamingEnabled,
+    defaultValue: bangumiAppAuth ||
+        bangumiRoamingUrl.isNotEmpty ||
+        bangumiSearchUrl.isNotEmpty,
+  );
+
+  static Map<String, String> get bangumiRegionServers {
+    final saved = _setting.get(SettingBoxKey.bangumiRegionServers);
+    if (saved is Map) {
+      return {
+        for (final area in bangumiRegions.keys)
+          if (saved[area] case final String address when address.isNotEmpty)
+            area: address,
+      };
+    }
+    return {bangumiAppArea: bangumiAppUrl};
+  }
+
+  static CDNService? get bangumiUpos {
+    final name = _setting.get(SettingBoxKey.bangumiUpos);
+    return CDNService.values.where((service) => service.name == name).firstOrNull;
+  }
+
+  static bool get bangumiUposForAll =>
+      _setting.get(SettingBoxKey.bangumiUposForAll, defaultValue: false);
+
   static const defaultBangumiAppUrl = 'https://bili.nepnep.moe';
   static String get bangumiAppUrl =>
       _setting.get(SettingBoxKey.bangumiAppUrl, defaultValue: defaultBangumiAppUrl);

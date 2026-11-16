@@ -9,6 +9,8 @@ import 'package:dio/dio.dart';
 
 abstract final class BangumiRoaming {
   static const _webPath = 'pgc/player/web/playurl';
+  static const _appPath = '/pgc/player/api/playurl';
+  static const _intlPath = '/intl/gateway/v2/ogv/playurl';
 
   static Uri? endpoint(String address) {
     final uri = Uri.tryParse(address);
@@ -23,11 +25,17 @@ abstract final class BangumiRoaming {
         uri.path.endsWith('/pgc/player/web/v2/playurl')) {
       return uri;
     }
-    final prefix = uri.path.replaceFirst(RegExp(r'/+$'), '');
+    var prefix = uri.path.replaceFirst(RegExp(r'/+$'), '');
+    for (final suffix in [_appPath, _intlPath]) {
+      if (prefix.endsWith(suffix)) {
+        prefix = prefix.substring(0, prefix.length - suffix.length);
+        break;
+      }
+    }
     return uri.replace(path: '$prefix/$_webPath');
   }
 
-  static Uri? appEndpoint(String address) {
+  static Uri? appEndpoint(String address, {String area = 'tw'}) {
     final uri = Uri.tryParse(address);
     if (uri == null ||
         uri.scheme != 'https' ||
@@ -37,9 +45,18 @@ abstract final class BangumiRoaming {
         uri.hasQuery) {
       return null;
     }
-    const path = '/pgc/player/api/playurl';
+    final path = area == 'th' ? _intlPath : _appPath;
     final prefix = uri.path.replaceFirst(RegExp(r'/+$'), '');
     return uri.replace(path: prefix.endsWith(path) ? prefix : '$prefix$path');
+  }
+
+  static Iterable<MapEntry<String, String>> get regionalServers sync* {
+    final servers = Pref.bangumiRegionServers;
+    for (final area in {Pref.bangumiAppArea, 'tw', 'hk', 'th', 'cn'}) {
+      if (servers[area] case final String address) {
+        yield MapEntry(area, address);
+      }
+    }
   }
 
   static bool isRegionRestricted(int? code, String? message) {
@@ -73,7 +90,7 @@ abstract final class BangumiRoaming {
     required String page,
   }) async {
     if (address.isEmpty) {
-      return const Error('请在其它设置中配置外番搜索服务');
+      return const Error('请在设置 → 哔哩漫游中配置该地区的解析服务器');
     }
     final playback = endpoint(address);
     if (playback == null) return const Error('外番搜索服务地址无效');
@@ -122,6 +139,7 @@ abstract final class BangumiRoaming {
     required String address,
     Object? seasonId,
     Object? epId,
+    String? area,
   }) async {
     final playback = endpoint(address);
     if (playback == null) return const Error('番剧漫游解析地址无效');
@@ -134,6 +152,7 @@ abstract final class BangumiRoaming {
       path: '$prefix/pgc/view/web/season',
       queryParameters: {
         ...playback.queryParameters,
+        if (area != null) 'area': area,
         if (seasonId != null) 'season_id': '$seasonId',
         if (epId != null) 'ep_id': '$epId',
       },
@@ -167,10 +186,48 @@ abstract final class BangumiRoaming {
     int? avid,
     String? bvid,
   }) async {
-    final useApp = Pref.bangumiAppAuth;
-    final uri = useApp
-        ? appEndpoint(Pref.bangumiAppUrl)
-        : endpoint(address);
+    LoadingState<PlayUrlModel>? failure;
+    for (final MapEntry(key: area, value: server) in regionalServers) {
+      if (!Pref.bangumiRoamingEnabled) break;
+      final authorized = Pref.bangumiAppAuth &&
+          Pref.bangumiRegionServers[area] == server;
+      final result = await _playUrl(
+        address: server,
+        area: area,
+        useApp: authorized,
+        episodeId: episodeId,
+        cid: cid,
+        qn: qn,
+        avid: avid,
+        bvid: bvid,
+      );
+      if (result.isSuccess) return result;
+      failure ??= result;
+    }
+    if (address.isEmpty || !Pref.bangumiRoamingEnabled) {
+      return failure ?? const Error('请配置番剧漫游解析服务器');
+    }
+    return _playUrl(
+      address: address,
+      episodeId: episodeId,
+      cid: cid,
+      qn: qn,
+      avid: avid,
+      bvid: bvid,
+    );
+  }
+
+  static Future<LoadingState<PlayUrlModel>> _playUrl({
+    required String address,
+    required String episodeId,
+    required int cid,
+    required int qn,
+    String? area,
+    bool useApp = false,
+    int? avid,
+    String? bvid,
+  }) async {
+    final uri = useApp ? appEndpoint(address, area: area!) : endpoint(address);
     if (uri == null) return const Error('番剧漫游解析地址无效');
     final accessKey = useApp ? Accounts.video.accessKey : null;
     if (useApp && (accessKey == null || accessKey.isEmpty)) {
@@ -190,12 +247,12 @@ abstract final class BangumiRoaming {
         'fourk': '1',
         if (avid != null) 'avid': '$avid',
         if (bvid != null) 'bvid': bvid,
+        if (area != null) 'area': area,
         if (useApp) ...{
-          'area': Pref.bangumiAppArea == 'hk' ? 'hk' : 'tw',
           'access_key': accessKey!,
-          'build': '2001100',
+          'build': area == 'th' ? '1001310' : '2001100',
           'device': 'android',
-          'mobi_app': 'android_hd',
+          'mobi_app': area == 'th' ? 'bstar_a' : 'android_hd',
           'platform': 'android',
           'force_host': '2',
         } else 'module': 'bangumi',
@@ -225,6 +282,10 @@ abstract final class BangumiRoaming {
           if (envelope is! Map<String, dynamic>) continue;
           for (final info in [envelope, envelope['video_info']]) {
             if (info is! Map<String, dynamic>) continue;
+            if (area == 'th') {
+              final international = _internationalVideo(info);
+              if (international != null) return Success(international);
+            }
             final dash = info['dash'];
             final video = dash is Map<String, dynamic> ? dash['video'] : null;
             final durl = info['durl'];
@@ -259,4 +320,34 @@ abstract final class BangumiRoaming {
       client.close();
     }
   }
+  static PlayUrlModel? _internationalVideo(Map<String, dynamic> info) {
+    final streams = info['stream_list'];
+    if (streams is! List) return null;
+    final videos = <Map<String, dynamic>>[];
+    final formats = <Map<String, dynamic>>[];
+    for (final stream in streams) {
+      if (stream is! Map<String, dynamic>) continue;
+      final video = stream['dash_video'];
+      final format = stream['stream_info'];
+      if (video is! Map<String, dynamic> || format is! Map<String, dynamic>) {
+        continue;
+      }
+      final quality = format['quality'];
+      final url = video['base_url'];
+      if (quality is! int || url is! String || url.isEmpty) continue;
+      videos.add({...video, 'id': quality});
+      formats.add(format);
+    }
+    if (videos.isEmpty) return null;
+    return PlayUrlModel.fromJson({
+      ...info,
+      'accept_quality': formats.map((format) => format['quality']).toSet().toList(),
+      'support_formats': formats,
+      'dash': {
+        'video': videos,
+        'audio': info['dash_audio'],
+      },
+    });
+  }
+
 }

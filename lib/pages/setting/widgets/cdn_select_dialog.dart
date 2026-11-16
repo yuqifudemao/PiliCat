@@ -286,16 +286,23 @@ class CdnSelectDialog extends StatefulWidget {
   const CdnSelectDialog({
     super.key,
     this.sample,
+    this.uposOnly = false,
+    this.speedTest,
   });
 
   final BaseItem? sample;
+  final bool uposOnly;
+  final bool? speedTest;
 
   @override
   State<CdnSelectDialog> createState() => _CdnSelectDialogState();
 }
 
 class _CdnSelectDialogState extends State<CdnSelectDialog> {
-  late final bool _cdnSpeedTest = Pref.cdnSpeedTest;
+  late final bool _cdnSpeedTest = widget.speedTest ?? Pref.cdnSpeedTest;
+  Iterable<CDNService> get _services => widget.uposOnly
+      ? CDNService.values.where((service) => service.host != null)
+      : CDNService.values;
   CdnSpeedTester? _tester;
   late final List<ValueNotifier<String?>> _speedResults;
 
@@ -328,7 +335,7 @@ class _CdnSelectDialogState extends State<CdnSelectDialog> {
     try {
       final sample = await tester.getSample();
       final urls = <String, List<CDNService>>{};
-      for (final service in CDNService.values) {
+      for (final service in _services) {
         final url = VideoUtils.getCdnUrl(
           sample.playUrls,
           defaultCDNService: service,
@@ -350,6 +357,10 @@ class _CdnSelectDialogState extends State<CdnSelectDialog> {
       await Future.wait(List.generate(3, (_) => measureNext()));
     } catch (e) {
       if (kDebugMode) debugPrint('CDN speed test failed: $e');
+      if (!mounted) return;
+      for (final service in _services) {
+        _speedResults[service.index].value ??= '测速失败';
+      }
     }
   }
 
@@ -377,11 +388,13 @@ class _CdnSelectDialogState extends State<CdnSelectDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final customHost = VideoUtils.customCDNUrl;
-    const services = CDNService.values;
+    final customHost = widget.uposOnly ? null : VideoUtils.customCDNUrl;
+    final selected = widget.uposOnly ? Pref.bangumiUpos : VideoUtils.cdnService;
     return AlertDialog(
       clipBehavior: Clip.hardEdge,
-      title: const Text('CDN 设置'),
+      title: Text(widget.uposOnly
+          ? (_cdnSpeedTest ? 'UPOS 服务器测速' : 'UPOS 服务器设置')
+          : 'CDN 设置'),
       constraints: const BoxConstraints.tightFor(width: 320),
       contentPadding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
       content: SingleChildScrollView(
@@ -408,10 +421,17 @@ class _CdnSelectDialogState extends State<CdnSelectDialog> {
               ),
               const SizedBox(height: 8),
             ],
-            for (final service in services)
+            if (widget.uposOnly)
+              M3eOptionItem(
+                selected: selected == null,
+                selectionControl: true,
+                title: const Text('跟随音视频设置'),
+                onTap: () => Navigator.pop(context, const CdnClearCustomResult()),
+              ),
+            for (final service in _services)
               M3eOptionItem(
                 selected:
-                    customHost == null && service == VideoUtils.cdnService,
+                    customHost == null && service == selected,
                 selectionControl: true,
                 title: Text(service.desc),
                 subtitle: _cdnSpeedTest
@@ -427,23 +447,25 @@ class _CdnSelectDialogState extends State<CdnSelectDialog> {
                 onTap: () =>
                     Navigator.pop(context, CdnBuiltinResult(service)),
               ),
-            const SizedBox(height: 8),
-            const Divider(height: 1, indent: 8, endIndent: 8),
-            const SizedBox(height: 8),
-            M3eOptionItem(
-              leading: const Icon(Icons.travel_explore_outlined),
-              title: const Text('从节点列表选择'),
-              subtitle: const Text('按地区选择全国 CDN 节点'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: _pickNode,
-            ),
-            M3eOptionItem(
-              leading: const Icon(Icons.edit_outlined),
-              title: const Text('手动输入'),
-              subtitle: const Text('输入任意节点 host 或完整 URL'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: _inputCustom,
-            ),
+            if (!widget.uposOnly) ...[
+              const SizedBox(height: 8),
+              const Divider(height: 1, indent: 8, endIndent: 8),
+              const SizedBox(height: 8),
+              M3eOptionItem(
+                leading: const Icon(Icons.travel_explore_outlined),
+                title: const Text('从节点列表选择'),
+                subtitle: const Text('按地区选择全国 CDN 节点'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _pickNode,
+              ),
+              M3eOptionItem(
+                leading: const Icon(Icons.edit_outlined),
+                title: const Text('手动输入'),
+                subtitle: const Text('输入任意节点 host 或完整 URL'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _inputCustom,
+              ),
+            ],
           ],
         ),
       ),

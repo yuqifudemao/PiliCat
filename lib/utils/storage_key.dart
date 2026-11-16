@@ -305,6 +305,10 @@ abstract final class SettingBoxKey {
       danmakuStrokeWidth = 'strokeWidth',
       danmakuFontWeight = 'fontWeight';
 
+  static const String bangumiRoamingEnabled = 'bangumiRoamingEnabled';
+  static const String bangumiRegionServers = 'bangumiRegionServers';
+  static const String bangumiUpos = 'bangumiUpos';
+  static const String bangumiUposForAll = 'bangumiUposForAll';
   static const String bangumiAppUrl = 'bangumiAppUrl';
   static const String bangumiAppAuth = 'bangumiAppAuth';
   static const String bangumiAppArea = 'bangumiAppArea';

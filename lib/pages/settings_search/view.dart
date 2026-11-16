@@ -32,7 +32,7 @@ class _SettingsSearchPageState
   final _textEditingController = TextEditingController();
   final RxList<SettingsModel> _list = <SettingsModel>[].obs;
   late final _settings = [
-    ...roamingResolverSettings,
+    ...roamingSettings,
     ...extraSettings,
     ...dmSettings,
     ...replySettings,

@@ -83,7 +83,16 @@ abstract final class VideoUtils {
     String? customHost,
     bool applyCustomCDN = true,
     bool isAudio = false,
+    bool? isBangumi,
   }) {
+    final upos = Pref.bangumiUpos;
+    if (isBangumi != null &&
+        upos != null &&
+        Pref.bangumiRoamingEnabled &&
+        (isBangumi || Pref.bangumiUposForAll)) {
+      defaultCDNService ??= upos;
+      applyCustomCDN = false;
+    }
     defaultCDNService ??= cdnService;
     customHost ??= applyCustomCDN ? customCDNUrl : null;
     if (isAudio && disableAudioCDN) {

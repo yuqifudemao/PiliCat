@@ -69,7 +69,11 @@ abstract final class SearchHttp {
     };
     if (area != null) {
       final result = await BangumiRoaming.search(
-        address: Pref.bangumiSearchUrl,
+        address: !Pref.bangumiRoamingEnabled
+            ? ''
+            : Pref.bangumiSearchUrl.isNotEmpty
+            ? Pref.bangumiSearchUrl
+            : Pref.bangumiRegionServers[area] ?? '',
         area: area,
         keyword: keyword,
         page: page.toString(),
@@ -175,7 +179,13 @@ abstract final class SearchHttp {
     dynamic seasonId,
     dynamic epId,
   }) async {
-    final address = Pref.bangumiRoamingUrl;
+    final servers = <MapEntry<String?, String>>[
+      if (Pref.bangumiRoamingEnabled) ...[
+        if (Pref.bangumiRoamingUrl.isNotEmpty)
+          MapEntry(null, Pref.bangumiRoamingUrl),
+        ...BangumiRoaming.regionalServers,
+      ],
+    ];
     try {
       final res = await Request().get(
         Api.pgcInfo,
@@ -189,21 +199,28 @@ abstract final class SearchHttp {
       if (code == 0) {
         final info = PgcInfoModel.fromJson(res.data['result']);
         final (episode, _) = info.findEpisode();
-        if (episode != null || address.isEmpty) return Success(info);
-      } else if (address.isEmpty ||
+        if (episode != null || servers.isEmpty) return Success(info);
+      } else if (servers.isEmpty ||
           (code != -404 &&
               !BangumiRoaming.isRegionRestricted(code, message))) {
         return Error(message);
       }
     } on DioException catch (error) {
       // HTTP 412 can also prevent the official details response from loading.
-      if (address.isEmpty || error.response?.statusCode != 412) rethrow;
+      if (servers.isEmpty || error.response?.statusCode != 412) rethrow;
     }
-    return BangumiRoaming.season(
-      address: address,
-      seasonId: seasonId,
-      epId: epId,
-    );
+    LoadingState<PgcInfoModel>? failure;
+    for (final MapEntry(key: area, value: address) in servers) {
+      final result = await BangumiRoaming.season(
+        address: address,
+        area: area,
+        seasonId: seasonId,
+        epId: epId,
+      );
+      if (result.isSuccess) return result;
+      failure ??= result;
+    }
+    return failure ?? const Error('番剧漫游未配置解析服务器');
   }
 
   static Future<LoadingState<PgcInfoModel>> pugvInfo({

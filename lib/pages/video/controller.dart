@@ -952,7 +952,10 @@ class VideoDetailController extends GetxController
       ..buffered.value = 0;
 
     firstVideo = findVideoByQa(currentVideoQa.code, setCodecs: true);
-    videoUrl = VideoUtils.getCdnUrl(firstVideo.playUrls);
+    videoUrl = VideoUtils.getCdnUrl(
+      firstVideo.playUrls,
+      isBangumi: !isUgc,
+    );
 
     /// 根据currentAudioQa 重新设置audioUrl
     if (currentAudioQa != null) {
@@ -960,7 +963,11 @@ class VideoDetailController extends GetxController
         (i) => i.id == currentAudioQa!.code,
         orElse: () => data.dash!.audio!.first,
       );
-      audioUrl = VideoUtils.getCdnUrl(firstAudio.playUrls, isAudio: true);
+      audioUrl = VideoUtils.getCdnUrl(
+        firstAudio.playUrls,
+        isBangumi: !isUgc,
+        isAudio: true,
+      );
     }
 
     playerInit();
@@ -1255,12 +1262,18 @@ class VideoDetailController extends GetxController
             // TODO: refa
             final sb = StringBuffer('edl://!no_chapters;');
             for (var i in durl) {
-              final video = VideoUtils.getCdnUrl(i.playUrls);
+              final video = VideoUtils.getCdnUrl(
+                i.playUrls,
+                isBangumi: !isUgc,
+              );
               sb.write('%${video.length}%$video,length=${i.length! / 1000};');
             }
             videoUrl = sb.toString();
           } else {
-            videoUrl = VideoUtils.getCdnUrl(durl.single.playUrls);
+            videoUrl = VideoUtils.getCdnUrl(
+              durl.single.playUrls,
+              isBangumi: !isUgc,
+            );
           }
 
           audioUrl = '';
@@ -1319,7 +1332,10 @@ class VideoDetailController extends GetxController
       currentDecodeFormats = targetDecode;
       currentVideoQa.value = VideoQuality.fromCode(targetQuality);
       _setVideoHeight();
-      videoUrl = VideoUtils.getCdnUrl(firstVideo.playUrls);
+      videoUrl = VideoUtils.getCdnUrl(
+        firstVideo.playUrls,
+        isBangumi: !isUgc,
+      );
 
       AudioItem? firstAudio;
       final audioList = dash.audio;
@@ -1328,7 +1344,11 @@ class VideoDetailController extends GetxController
           audioList,
           plPlayerController.cacheAudioQa,
         );
-        audioUrl = VideoUtils.getCdnUrl(firstAudio.playUrls, isAudio: true);
+        audioUrl = VideoUtils.getCdnUrl(
+          firstAudio.playUrls,
+          isBangumi: !isUgc,
+          isAudio: true,
+        );
         currentAudioQa = AudioQuality.fromCode(firstAudio.id);
       } else {
         audioUrl = '';
@@ -2296,7 +2316,10 @@ class VideoDetailController extends GetxController
         SmartDialog.showToast('不支持投屏');
         return;
       }
-      final url = VideoUtils.getCdnUrl(first.playUrls);
+      final url = VideoUtils.getCdnUrl(
+        first.playUrls,
+        isBangumi: !isUgc,
+      );
 
       String? title;
       try {
