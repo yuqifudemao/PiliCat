@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:PiliPlus/http/browser_ua.dart';
 import 'package:PiliPlus/http/constants.dart';
 import 'package:PiliPlus/http/video.dart';
@@ -120,6 +122,10 @@ class CdnSpeedTester {
       return null;
     }
 
+    final deadline = Timer(const Duration(seconds: 6), () {
+      result ??= snapshot();
+      token.cancel();
+    });
     try {
       await dio.get(
         url,
@@ -150,6 +156,7 @@ class CdnSpeedTester {
     } catch (e) {
       result ??= e.toString();
     } finally {
+      deadline.cancel();
       _tokens.remove(token);
     }
     return result!;
@@ -320,18 +327,27 @@ class _CdnSelectDialogState extends State<CdnSelectDialog> {
     final tester = _tester!;
     try {
       final sample = await tester.getSample();
+      final urls = <String, List<CDNService>>{};
       for (final service in CDNService.values) {
-        if (!mounted) return;
-        // 显式绕过全局自定义节点，否则每行测到的都是同一个自定义 host
         final url = VideoUtils.getCdnUrl(
           sample.playUrls,
           defaultCDNService: service,
           applyCustomCDN: false,
         );
-        final result = await tester.measure(url);
-        if (!mounted) return;
-        _speedResults[service.index].value = result;
+        (urls[url] ??= []).add(service);
       }
+      final pending = urls.entries.iterator;
+      Future<void> measureNext() async {
+        while (mounted && pending.moveNext()) {
+          final entry = pending.current;
+          final result = await tester.measure(entry.key);
+          if (!mounted) return;
+          for (final service in entry.value) {
+            _speedResults[service.index].value = result;
+          }
+        }
+      }
+      await Future.wait(List.generate(3, (_) => measureNext()));
     } catch (e) {
       if (kDebugMode) debugPrint('CDN speed test failed: $e');
     }

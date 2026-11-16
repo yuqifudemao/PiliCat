@@ -305,6 +305,7 @@ abstract final class SettingBoxKey {
       danmakuStrokeWidth = 'strokeWidth',
       danmakuFontWeight = 'fontWeight';
 
+  static const String bangumiAppUrl = 'bangumiAppUrl';
   static const String bangumiAppAuth = 'bangumiAppAuth';
   static const String bangumiAppArea = 'bangumiAppArea';
   static const String bangumiSearchUrl = 'bangumiSearchUrl';

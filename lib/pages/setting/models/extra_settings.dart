@@ -281,15 +281,21 @@ List<SettingsModel> get extraSettings => [
     ),
   ),
   NormalModel(
-    title: '番剧漫游',
+    title: '番剧漫游（网页解析）',
     getSubtitle: () => Pref.bangumiRoamingUrl.isEmpty ? '未配置' : '已配置解析服务',
     leading: const Icon(Icons.public),
     onTap: _showBangumiRoamingDialog,
   ),
-  const SwitchModel(
+  NormalModel(
+    title: '安卓解析服务器',
+    getSubtitle: () => Pref.bangumiAppUrl,
+    leading: const Icon(Icons.dns_outlined),
+    onTap: _showBangumiAppServerDialog,
+  ),
+  SwitchModel(
     title: '哔哩漫游安卓解析授权',
-    subtitle: '开启后将播放账号访问令牌发送给 bili.nepnep.moe，用于解析受限番剧',
-    leading: Icon(Icons.verified_user_outlined),
+    subtitle: '开启后将播放账号访问令牌发送至 ${Pref.bangumiAppUrl}',
+    leading: const Icon(Icons.verified_user_outlined),
     setKey: SettingBoxKey.bangumiAppAuth,
     defaultVal: false,
   ),
@@ -619,6 +625,54 @@ Future<void> _showBangumiRoamingDialog(
       search ? SettingBoxKey.bangumiSearchUrl : SettingBoxKey.bangumiRoamingUrl,
       result,
     );
+    if (context.mounted) setState();
+  }
+}
+
+Future<void> _showBangumiAppServerDialog(
+  BuildContext context,
+  VoidCallback setState,
+) async {
+  final original = Pref.bangumiAppUrl;
+  var address = original;
+  final formKey = GlobalKey<FormState>();
+  final result = await showDialog<String>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('安卓解析服务器'),
+      content: Form(
+        key: formKey,
+        child: TextFormField(
+          initialValue: original,
+          keyboardType: TextInputType.url,
+          decoration: const InputDecoration(
+            hintText: Pref.defaultBangumiAppUrl,
+            helperText: '留空恢复默认。更换后需重新开启安卓解析授权。',
+            helperMaxLines: 2,
+          ),
+          onChanged: (value) => address = value.trim(),
+          validator: (value) =>
+              address.isNotEmpty && BangumiRoaming.appEndpoint(address) == null
+              ? '请输入不带查询参数的 HTTPS 地址'
+              : null,
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: Get.back, child: const Text('取消')),
+        TextButton(
+          onPressed: () {
+            if (formKey.currentState!.validate()) {
+              Get.back(result: address.isEmpty ? Pref.defaultBangumiAppUrl : address);
+            }
+          },
+          child: const Text('保存'),
+        ),
+      ],
+    ),
+  );
+  if (result != null && result != original) {
+    await GStorage.setting.put(SettingBoxKey.bangumiAppAuth, false);
+    await GStorage.setting.put(SettingBoxKey.bangumiAppUrl, result);
     if (context.mounted) setState();
   }
 }

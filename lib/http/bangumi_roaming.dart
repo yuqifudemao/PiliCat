@@ -27,6 +27,21 @@ abstract final class BangumiRoaming {
     return uri.replace(path: '$prefix/$_webPath');
   }
 
+  static Uri? appEndpoint(String address) {
+    final uri = Uri.tryParse(address);
+    if (uri == null ||
+        uri.scheme != 'https' ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty ||
+        uri.hasFragment ||
+        uri.hasQuery) {
+      return null;
+    }
+    const path = '/pgc/player/api/playurl';
+    final prefix = uri.path.replaceFirst(RegExp(r'/+$'), '');
+    return uri.replace(path: prefix.endsWith(path) ? prefix : '$prefix$path');
+  }
+
   static bool isRegionRestricted(int? code, String? message) {
     return code == 6002003 ||
         RegExp(r'(地区|地區|区域|區域).*(限制|不可|无法|無法|不能)|region.*restrict',
@@ -154,7 +169,7 @@ abstract final class BangumiRoaming {
   }) async {
     final useApp = Pref.bangumiAppAuth;
     final uri = useApp
-        ? Uri.parse('https://bili.nepnep.moe/pgc/player/api/playurl')
+        ? appEndpoint(Pref.bangumiAppUrl)
         : endpoint(address);
     if (uri == null) return const Error('番剧漫游解析地址无效');
     final accessKey = useApp ? Accounts.video.accessKey : null;
@@ -162,7 +177,7 @@ abstract final class BangumiRoaming {
       return const Error('播放账号缺少访问令牌，请在 PiliCat 重新登录 B 站账号');
     }
 
-    // The opt-in token is sent only to this HTTPS endpoint, without redirects.
+    // Send the token only to the configured HTTPS endpoint, without redirects.
     final client = _client();
     try {
       final params = <String, dynamic>{

@@ -559,6 +559,9 @@ abstract final class Pref {
   static bool get removeBlockedRcmd =>
       _setting.get(SettingBoxKey.removeBlockedRcmd, defaultValue: false);
 
+  static const defaultBangumiAppUrl = 'https://bili.nepnep.moe';
+  static String get bangumiAppUrl =>
+      _setting.get(SettingBoxKey.bangumiAppUrl, defaultValue: defaultBangumiAppUrl);
   static bool get bangumiAppAuth =>
       _setting.get(SettingBoxKey.bangumiAppAuth, defaultValue: false);
   static String get bangumiAppArea =>
