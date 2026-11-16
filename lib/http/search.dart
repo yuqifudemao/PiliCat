@@ -130,7 +130,13 @@ abstract final class SearchHttp {
             switch (searchType) {
               .all => SearchVideoData.fromSearchAll(dataData),
               .video => SearchVideoData.fromJson(dataData),
-              .media_bangumi || .media_ft || .taiwanBangumi || .hongKongBangumi =>
+              .media_bangumi ||
+              .media_ft ||
+              .taiwanBangumi ||
+              .hongKongBangumi ||
+              .thailandBangumi ||
+              .taiwanFilm ||
+              .hongKongFilm =>
                 SearchPgcData.fromJson(dataData),
               .live_room => SearchLiveData.fromJson(dataData),
               .bili_user => SearchUserData.fromJson(dataData),
