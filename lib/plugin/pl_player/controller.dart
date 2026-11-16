@@ -1534,7 +1534,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
           final failedSource = dataSource;
           if (failedSource is NetworkSource && failedSource.backups.isNotEmpty) {
             final failedAttempt = _backupSourceIndex;
-            Timer(const Duration(seconds: 3), () {
+            Timer(const Duration(seconds: 1), () {
               if (identical(dataSource, failedSource) &&
                   _backupSourceIndex == failedAttempt &&
                   isBuffering.value &&
