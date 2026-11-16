@@ -183,6 +183,8 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   late final tryLook = !Accounts.get(AccountType.video).isLogin && Pref.p1080;
 
   late DataSource dataSource;
+  int _backupSourceIndex = 0;
+  bool _switchingBackupSource = false;
 
   Timer? _timer;
 
@@ -1063,6 +1065,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       this.width = width;
       this.height = height;
       this.dataSource = dataSource;
+      _backupSourceIndex = 0;
       _autoPlay = autoplay;
       // 初始化数据加载状态
       dataStatus.value = DataStatus.loading;
@@ -1327,6 +1330,40 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     return null;
   }
 
+  Future<void> _retryNetworkSource(NetworkSource failedSource) async {
+    if (!identical(dataSource, failedSource) || _switchingBackupSource) return;
+    final player = _videoPlayerController;
+    if (player == null || player.current.isEmpty) return;
+    if (_backupSourceIndex >= failedSource.backups.length) {
+      if (_backupSourceIndex++ != failedSource.backups.length) return;
+      SmartDialog.showToast('番剧备用播放地址均无法连接');
+      return;
+    }
+    final source = failedSource.backups[_backupSourceIndex++];
+    final media = player.current.last;
+    final audio = source.audio;
+    final video = source.video;
+    final url = audio == null || audio.isEmpty
+        ? video
+        : onlyPlayAudio.value
+        ? audio
+        : 'edl://!no_chapters;%${video.length}%$video;'
+            '!new_stream;!no_chapters;%${audio.length}%$audio';
+    _switchingBackupSource = true;
+    try {
+      await player.open(
+        Media(url, start: player.state.position, extras: media.extras),
+        play: true,
+      );
+    } catch (_) {
+      if (identical(dataSource, failedSource)) {
+        SmartDialog.showToast('番剧备用播放地址打开失败');
+      }
+    } finally {
+      _switchingBackupSource = false;
+    }
+  }
+
   // 开始播放
   Future<void> _initializePlayer() async {
     if (_instance == null) return;
@@ -1494,6 +1531,19 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
             //tcp: ffurl_read returned 0xdfb9b0bb
             //tcp: ffurl_read returned 0xffffff99
             event.startsWith('tcp: ffurl_read returned ')) {
+          final failedSource = dataSource;
+          if (failedSource is NetworkSource && failedSource.backups.isNotEmpty) {
+            final failedAttempt = _backupSourceIndex;
+            Timer(const Duration(seconds: 3), () {
+              if (identical(dataSource, failedSource) &&
+                  _backupSourceIndex == failedAttempt &&
+                  isBuffering.value &&
+                  buffered.value == 0) {
+                _retryNetworkSource(failedSource);
+              }
+            });
+            return;
+          }
           EasyThrottle.throttle(
             'controllerStream.error.listen',
             const Duration(milliseconds: 10000),
@@ -1504,7 +1554,8 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
               // if (kDebugMode) {
               //   debugPrint("_buffered.value: ${_buffered.value}");
               // }
-              if (isBuffering.value && buffered.value == 0) {
+              if (identical(dataSource, failedSource) &&
+                  isBuffering.value && buffered.value == 0) {
                 final customHost = VideoUtils.customCDNUrl;
                 SmartDialog.showToast(
                   customHost == null

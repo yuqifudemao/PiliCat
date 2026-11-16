@@ -979,6 +979,35 @@ class VideoDetailController extends GetxController
     return null;
   }
 
+  List<({String video, String? audio})> _pgcBackupSources() {
+    if ((_actualVideoType ?? videoType) != VideoType.pgc ||
+        data.dash?.video?.isNotEmpty != true) {
+      return const [];
+    }
+
+    final audio = data.dash?.audio
+        ?.firstWhereOrNull((item) => item.id == currentAudioQa?.code);
+    final audioCandidates = {
+      if (audioUrl case final url? when url.isNotEmpty) url,
+      ...?audio?.playUrls,
+    };
+    final backups = <({String video, String? audio})>{};
+    for (final video in {videoUrl!, ...firstVideo.playUrls}) {
+      final videoHost = Uri.tryParse(video)?.host;
+      final matchedAudio = audioCandidates.firstWhereOrNull(
+        (url) => Uri.tryParse(url)?.host == videoHost,
+      );
+      final candidate = (video: video, audio: matchedAudio ?? audioUrl);
+      if (candidate != (video: videoUrl!, audio: audioUrl)) {
+        backups.add(candidate);
+      }
+    }
+    for (final audio in audioCandidates) {
+      if (audio != audioUrl) backups.add((video: videoUrl!, audio: audio));
+    }
+    return backups.toList();
+  }
+
   Future<void> playerInit({
     bool? autoplay,
     bool autoFullScreenFlag = false,
@@ -1004,6 +1033,7 @@ class VideoDetailController extends GetxController
           : NetworkSource(
               videoSource: videoUrl!,
               audioSource: audioUrl,
+              backups: _pgcBackupSources(),
             ),
       seekTo: seek,
       duration: data.timeLength == null
