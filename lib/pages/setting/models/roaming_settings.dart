@@ -1,5 +1,6 @@
 import 'package:PiliPlus/http/bangumi_roaming.dart';
 import 'package:PiliPlus/pages/setting/models/model.dart';
+import 'package:PiliPlus/pages/setting/pages/playback_diagnostics.dart';
 import 'package:PiliPlus/pages/setting/widgets/cdn_select_dialog.dart';
 import 'package:PiliPlus/pages/setting/widgets/switch_item.dart';
 import 'package:PiliPlus/utils/storage.dart';
@@ -58,6 +59,12 @@ List<SettingsModel> get roamingSettings => [
         );
       },
     ),
+  ),
+  NormalModel(
+    title: '播放诊断日志',
+    subtitle: '查看、复制或清空最近的播放记录',
+    leading: const Icon(Icons.receipt_long_outlined),
+    onTap: (context, setState) => Get.to(() => const PlaybackDiagnosticsPage()),
   ),
   NormalModel(
     title: '番剧漫游（网页解析）',

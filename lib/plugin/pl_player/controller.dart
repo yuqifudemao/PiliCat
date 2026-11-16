@@ -33,6 +33,7 @@ import 'package:PiliPlus/plugin/pl_player/utils/danmaku_options.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/fullscreen.dart';
 import 'package:PiliPlus/services/live_pip_overlay_service.dart';
 import 'package:PiliPlus/services/pip_overlay_service.dart';
+import 'package:PiliPlus/services/playback_diagnostics.dart';
 import 'package:PiliPlus/services/service_locator.dart';
 import 'package:PiliPlus/utils/accounts.dart';
 import 'package:PiliPlus/utils/android/android_helper.dart';
@@ -185,6 +186,10 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   late DataSource dataSource;
   Media? _lastBackupMedia;
   int _backupSourceIndex = 0;
+  Stopwatch? _startupTimer;
+  Stopwatch? _bufferingTimer;
+  Duration _diagnosticStartPosition = Duration.zero;
+  String? _lastDiagnosticError;
   bool _switchingBackupSource = false;
 
   Timer? _timer;
@@ -1066,6 +1071,9 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       this.width = width;
       this.height = height;
       this.dataSource = dataSource;
+      _startupTimer = null;
+      _bufferingTimer = null;
+      _lastDiagnosticError = null;
       _lastBackupMedia = null;
       _backupSourceIndex = 0;
       _autoPlay = autoplay;
@@ -1317,7 +1325,36 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     if (dataSource is NetworkSource && dataSource.backups.isNotEmpty) {
       _lastBackupMedia = media;
     }
-    await player.open(media, play: false);
+    final openTimer = dataSource is NetworkSource && !isLive
+        ? (Stopwatch()..start())
+        : null;
+    if (openTimer != null && dataSource is NetworkSource) {
+      _diagnosticStartPosition = seekTo ?? Duration.zero;
+      _startupTimer = Stopwatch();
+      final upos = Pref.bangumiRoamingEnabled &&
+              (_videoType != VideoType.ugc || Pref.bangumiUposForAll)
+          ? Pref.bangumiUpos
+          : null;
+      final node = upos?.name ??
+          (VideoUtils.customCDNUrl == null ? VideoUtils.cdnService.name : '自定义');
+      PlaybackDiagnostics.record(
+        '打开媒体 · ${_videoType.name} · CDN 策略 $node · '
+        '备用 ${dataSource.backups.length} 条',
+      );
+    }
+    try {
+      await player.open(media, play: false);
+      if (openTimer != null && identical(this.dataSource, dataSource)) {
+        PlaybackDiagnostics.record(
+          '媒体打开调用完成 · ${openTimer.elapsedMilliseconds} ms',
+        );
+      }
+    } catch (_) {
+      if (openTimer != null && identical(this.dataSource, dataSource)) {
+        PlaybackDiagnostics.record('播放器打开媒体异常');
+      }
+      rethrow;
+    }
     applyVideoPictureParameters(player);
   }
 
@@ -1343,10 +1380,16 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     if (media == null) return;
     if (_backupSourceIndex >= failedSource.backups.length) {
       if (_backupSourceIndex++ != failedSource.backups.length) return;
+      PlaybackDiagnostics.record('备用播放地址已用尽');
       SmartDialog.showToast('番剧备用播放地址均无法连接');
       return;
     }
     final source = failedSource.backups[_backupSourceIndex++];
+    _lastDiagnosticError = null;
+    _startupTimer?.start();
+    PlaybackDiagnostics.record(
+      '切换备用 CDN · $_backupSourceIndex/${failedSource.backups.length}',
+    );
     final audio = source.audio;
     final video = source.video;
     final url = audio == null || audio.isEmpty
@@ -1366,6 +1409,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       await player.open(nextMedia, play: true);
     } catch (_) {
       if (identical(dataSource, failedSource)) {
+        PlaybackDiagnostics.record('备用 CDN 打开失败');
         SmartDialog.showToast('番剧备用播放地址打开失败');
       }
     } finally {
@@ -1481,6 +1525,17 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
       /// position
       stream.position.listen((Duration position) {
+        final timer = _startupTimer;
+        if (timer != null &&
+            timer.isRunning &&
+            player.state.playing &&
+            !player.state.buffering &&
+            position > _diagnosticStartPosition + const Duration(milliseconds: 100)) {
+          _startupTimer = null;
+          PlaybackDiagnostics.record(
+            '检测到播放进度推进 · 开始播放后 ${timer.elapsedMilliseconds} ms',
+          );
+        }
         final posInSeconds = position.inSeconds;
 
         if (posInSeconds != this.position.value) {
@@ -1505,6 +1560,16 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
         buffered.value = buffer.inSeconds;
       }),
       stream.buffering.listen((bool buffering) {
+        if (!isLive && dataSource is NetworkSource) {
+          final timer = _bufferingTimer;
+          if (buffering && timer == null) {
+            _bufferingTimer = Stopwatch()..start();
+            PlaybackDiagnostics.record('开始缓冲');
+          } else if (!buffering && timer != null) {
+            _bufferingTimer = null;
+            PlaybackDiagnostics.record('缓冲结束 · ${timer.elapsedMilliseconds} ms');
+          }
+        }
         isBuffering.value = buffering;
         if (!playerStatus.isCompleted) {
           _stopWakeLockTimer();
@@ -1540,6 +1605,21 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
             failedSource is NetworkSource && failedSource.backups.isNotEmpty;
         final tlsHandshakeEnded =
             event.startsWith('tls: mbedtls_ssl_handshake returned -0x7280');
+        if (failedSource is NetworkSource) {
+          final category = switch (event) {
+            _ when tlsHandshakeEnded => 'TLS 握手中断 (-0x7280)',
+            _ when event.startsWith('tls:') => 'TLS 错误',
+            _ when event.startsWith('tcp:') => 'TCP 读取失败',
+            _ when event.startsWith('Could not open codec') => '解码器打开失败',
+            _ when event.startsWith('Failed to open') ||
+                event.startsWith('Can not open') => '媒体地址打开失败',
+            _ => '其他播放器错误',
+          };
+          if (_lastDiagnosticError != category) {
+            _lastDiagnosticError = category;
+            PlaybackDiagnostics.record('播放器错误 · $category');
+          }
+        }
         if ((hasBackups && tlsHandshakeEnded) ||
             event.startsWith("Failed to open https://") ||
             event.startsWith("Can not open external file https://") ||
@@ -1580,6 +1660,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
                       ? const Duration(milliseconds: 500)
                       : const Duration(milliseconds: 3000),
                 );
+                PlaybackDiagnostics.record('重试当前 CDN');
                 refreshPlayer();
               }
             }),
@@ -1668,7 +1749,14 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
   /// 底层播放：申请音频焦点 + 启动播放，不含 UI 副作用
   Future<void> _rawPlay() async {
-    await _videoPlayerController?.play();
+    final player = _videoPlayerController;
+    final timer = _startupTimer;
+    if (player != null && timer != null && !timer.isRunning) {
+      _diagnosticStartPosition = player.state.position;
+      timer.start();
+      PlaybackDiagnostics.record('请求开始播放');
+    }
+    await player?.play();
     audioSessionHandler?.setActive(true);
     playerStatus = PlayerStatus.playing;
   }

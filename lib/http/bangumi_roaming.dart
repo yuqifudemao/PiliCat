@@ -2,6 +2,7 @@ import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/models/search/result.dart';
 import 'package:PiliPlus/models/video/play/url.dart';
 import 'package:PiliPlus/models_new/pgc/pgc_info_model/result.dart';
+import 'package:PiliPlus/services/playback_diagnostics.dart';
 import 'package:PiliPlus/utils/accounts.dart';
 import 'package:PiliPlus/utils/app_sign.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
@@ -191,6 +192,8 @@ abstract final class BangumiRoaming {
       if (!Pref.bangumiRoamingEnabled) break;
       final authorized = Pref.bangumiAppAuth &&
           Pref.bangumiRegionServers[area] == server;
+      final timer = Stopwatch()..start();
+      PlaybackDiagnostics.record('开始漫游解析 · $area · ${authorized ? '安卓' : '网页'}');
       final result = await _playUrl(
         address: server,
         area: area,
@@ -201,13 +204,19 @@ abstract final class BangumiRoaming {
         avid: avid,
         bvid: bvid,
       );
+      PlaybackDiagnostics.record(
+        '漫游解析${result.isSuccess ? '成功' : '失败'} · $area · '
+        '${timer.elapsedMilliseconds} ms',
+      );
       if (result.isSuccess) return result;
       failure ??= result;
     }
     if (address.isEmpty || !Pref.bangumiRoamingEnabled) {
       return failure ?? const Error('请配置番剧漫游解析服务器');
     }
-    return _playUrl(
+    final timer = Stopwatch()..start();
+    PlaybackDiagnostics.record('开始漫游解析 · 网页备用服务');
+    final result = await _playUrl(
       address: address,
       episodeId: episodeId,
       cid: cid,
@@ -215,6 +224,11 @@ abstract final class BangumiRoaming {
       avid: avid,
       bvid: bvid,
     );
+    PlaybackDiagnostics.record(
+      '网页备用解析${result.isSuccess ? '成功' : '失败'} · '
+      '${timer.elapsedMilliseconds} ms',
+    );
+    return result;
   }
 
   static Future<LoadingState<PlayUrlModel>> _playUrl({
@@ -275,6 +289,7 @@ abstract final class BangumiRoaming {
         return Error('$mode返回了非 JSON 对象');
       }
       final code = int.tryParse(body['code']?.toString() ?? '');
+      PlaybackDiagnostics.record('解析响应 · 状态码 ${code ?? '缺失'}');
       if (code == 0) {
         final result = body['result'];
         final data = body['data'];
@@ -312,7 +327,11 @@ abstract final class BangumiRoaming {
       return Error(code == null
           ? '$mode响应缺少有效状态码'
           : '$mode服务拒绝了播放请求（状态码 $code）');
-    } on DioException {
+    } on DioException catch (error) {
+      final status = error.response?.statusCode;
+      PlaybackDiagnostics.record(
+        status == null ? '解析网络错误 · ${error.type.name}' : '解析 HTTP 错误 · $status',
+      );
       return Error('无法从番剧漫游解析服务获取视频，请检查地址或线路');
     } on Object {
       return Error('番剧漫游解析服务返回了不兼容的数据');

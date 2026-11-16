@@ -80,6 +80,7 @@ import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:PiliPlus/utils/subtitle_utils.dart';
 import 'package:PiliPlus/utils/theme_utils.dart';
 import 'package:PiliPlus/utils/utils.dart';
+import 'package:PiliPlus/services/playback_diagnostics.dart';
 import 'package:PiliPlus/utils/video_utils.dart';
 import 'package:collection/collection.dart';
 import 'package:dio/dio.dart' show Options;
@@ -1215,7 +1216,21 @@ class VideoDetailController extends GetxController
       preferCodecs = isWiFi ? Pref.preferCodecs : Pref.preferCodecsCellular;
     }
 
-    final result = await _getVideoUrl(VideoQuality.hdrVivid.code);
+    final streamTimer = Stopwatch()..start();
+    PlaybackDiagnostics.record('请求播放地址 · ${videoType.name}');
+    final LoadingState<PlayUrlModel> result;
+    try {
+      result = await _getVideoUrl(VideoQuality.hdrVivid.code);
+    } catch (_) {
+      PlaybackDiagnostics.record(
+        '请求播放地址异常 · ${streamTimer.elapsedMilliseconds} ms',
+      );
+      rethrow;
+    }
+    PlaybackDiagnostics.record(
+      '播放地址${result.isSuccess ? '已获取' : '获取失败'} · '
+      '${streamTimer.elapsedMilliseconds} ms',
+    );
 
     if (result case Success(:final response)) {
       data = response;
