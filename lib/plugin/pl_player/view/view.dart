@@ -2026,24 +2026,6 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
           ),
         ),
 
-        if (!isLive && !videoDetailController.isFileSource)
-          Positioned(
-            top: 60,
-            right: 12,
-            child: ViewSafeArea(
-              top: true,
-              child: IgnorePointer(
-                child: FadeTransition(
-                opacity: _animationController,
-                child: PlaybackDownloadSpeed(
-                  controller: plPlayerController,
-                  alwaysVisible: true,
-                  ),
-                ),
-              ),
-            ),
-          ),
-
         // 头部、底部控制条
         Positioned.fill(
           top: -1,
@@ -2065,7 +2047,27 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
                                 ?.startDragging(),
                             child: widget.headerControl,
                           )
-                        : widget.headerControl,
+                        : isLive || videoDetailController.isFileSource
+                        ? widget.headerControl
+                        : Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              widget.headerControl,
+                              Padding(
+                                padding: const EdgeInsets.only(right: 12),
+                                child: Align(
+                                  alignment: Alignment.centerRight,
+                                  child: IgnorePointer(
+                                    child: PlaybackDownloadSpeed(
+                                      controller: plPlayerController,
+                                      alwaysVisible: true,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                   ),
                   AppBarAni(
                     isTop: false,
