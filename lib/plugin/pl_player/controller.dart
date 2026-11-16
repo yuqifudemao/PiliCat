@@ -183,6 +183,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   late final tryLook = !Accounts.get(AccountType.video).isLogin && Pref.p1080;
 
   late DataSource dataSource;
+  Media? _lastBackupMedia;
   int _backupSourceIndex = 0;
   bool _switchingBackupSource = false;
 
@@ -1065,6 +1066,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       this.width = width;
       this.height = height;
       this.dataSource = dataSource;
+      _lastBackupMedia = null;
       _backupSourceIndex = 0;
       _autoPlay = autoplay;
       // 初始化数据加载状态
@@ -1307,14 +1309,15 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     }
 
     assert(!isLive || seekTo == null);
-    await player.open(
-      Media(
-        video,
-        start: seekTo,
-        extras: extras.isEmpty ? null : extras,
-      ),
-      play: false,
+    final media = Media(
+      video,
+      start: seekTo,
+      extras: extras.isEmpty ? null : extras,
     );
+    if (dataSource is NetworkSource && dataSource.backups.isNotEmpty) {
+      _lastBackupMedia = media;
+    }
+    await player.open(media, play: false);
     applyVideoPictureParameters(player);
   }
 
@@ -1333,14 +1336,15 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   Future<void> _retryNetworkSource(NetworkSource failedSource) async {
     if (!identical(dataSource, failedSource) || _switchingBackupSource) return;
     final player = _videoPlayerController;
-    if (player == null || player.current.isEmpty) return;
+    if (player == null) return;
+    final media = player.current.lastOrNull ?? _lastBackupMedia;
+    if (media == null) return;
     if (_backupSourceIndex >= failedSource.backups.length) {
       if (_backupSourceIndex++ != failedSource.backups.length) return;
       SmartDialog.showToast('番剧备用播放地址均无法连接');
       return;
     }
     final source = failedSource.backups[_backupSourceIndex++];
-    final media = player.current.last;
     final audio = source.audio;
     final video = source.video;
     final url = audio == null || audio.isEmpty
@@ -1351,10 +1355,13 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
             '!new_stream;!no_chapters;%${audio.length}%$audio';
     _switchingBackupSource = true;
     try {
-      await player.open(
-        Media(url, start: player.state.position, extras: media.extras),
-        play: true,
+      final nextMedia = Media(
+        url,
+        start: player.current.isEmpty ? media.start : player.state.position,
+        extras: media.extras,
       );
+      _lastBackupMedia = nextMedia;
+      await player.open(nextMedia, play: true);
     } catch (_) {
       if (identical(dataSource, failedSource)) {
         SmartDialog.showToast('番剧备用播放地址打开失败');
@@ -1526,19 +1533,25 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
           }
           return;
         }
-        if (event.startsWith("Failed to open https://") ||
+        final failedSource = dataSource;
+        final hasBackups =
+            failedSource is NetworkSource && failedSource.backups.isNotEmpty;
+        final tlsHandshakeEnded =
+            event.startsWith('tls: mbedtls_ssl_handshake returned -0x7280');
+        if ((hasBackups && tlsHandshakeEnded) ||
+            event.startsWith("Failed to open https://") ||
             event.startsWith("Can not open external file https://") ||
             //tcp: ffurl_read returned 0xdfb9b0bb
             //tcp: ffurl_read returned 0xffffff99
             event.startsWith('tcp: ffurl_read returned ')) {
-          final failedSource = dataSource;
-          if (failedSource is NetworkSource && failedSource.backups.isNotEmpty) {
+          if (failedSource is NetworkSource && hasBackups) {
             final failedAttempt = _backupSourceIndex;
             Timer(const Duration(seconds: 1), () {
               if (identical(dataSource, failedSource) &&
                   _backupSourceIndex == failedAttempt &&
-                  isBuffering.value &&
-                  buffered.value == 0) {
+                  buffered.value == 0 &&
+                  (isBuffering.value ||
+                      (tlsHandshakeEnded && player.current.isEmpty))) {
                 _retryNetworkSource(failedSource);
               }
             });
