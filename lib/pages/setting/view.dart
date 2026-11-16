@@ -87,6 +87,11 @@ class _SettingPageState extends State<SettingPage> {
       icon: Icon(Icons.style_outlined),
     ),
     _SettingsModel(
+      type: .roamingSetting,
+      subtitle: '番剧解析、地区、外番搜索、CDN',
+      icon: Icon(Icons.public),
+    ),
+    _SettingsModel(
       type: .extraSetting,
       subtitle: '震动、搜索、收藏、ai、代理、更新检查等',
       icon: Icon(Icons.extension_outlined),
@@ -140,6 +145,7 @@ class _SettingPageState extends State<SettingPage> {
                       .playSetting ||
                       .dmSetting ||
                       .styleSetting ||
+                      .roamingSetting ||
                       .extraSetting => CommonSetting(
                         settingType: _type,
                         showAppBar: false,
@@ -174,6 +180,7 @@ class _SettingPageState extends State<SettingPage> {
           .playSetting ||
           .dmSetting ||
           .styleSetting ||
+          .roamingSetting ||
           .extraSetting => CommonSetting(settingType: type),
           .webdavSetting => const WebDavSettingPage(),
           .about => const AboutPage(),

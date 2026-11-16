@@ -22,6 +22,22 @@ import 'package:get/get.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
 import 'package:material_ui/material_ui.dart';
 
+NormalModel get videoCdnSetting => NormalModel(
+  title: 'CDN 设置',
+  leading: const Icon(MdiIcons.cloudPlusOutline),
+  getSubtitle: () =>
+      '当前使用：${VideoUtils.effectiveCdnDesc()}，部分 CDN 可能失效，如无法播放请尝试切换',
+  onTap: _showCDNDialog,
+);
+
+const cdnSpeedTestSetting = SwitchModel(
+  title: 'CDN 测速',
+  leading: Icon(Icons.speed),
+  subtitle: '测速通过模拟加载视频实现，注意流量消耗，结果仅供参考',
+  setKey: SettingBoxKey.cdnSpeedTest,
+  defaultVal: true,
+);
+
 List<SettingsModel> get videoSettings => [
   const SwitchModel(
     title: '开启硬解',
@@ -55,26 +71,14 @@ List<SettingsModel> get videoSettings => [
       ),
     ),
   ),
-  NormalModel(
-    title: 'CDN 设置',
-    leading: const Icon(MdiIcons.cloudPlusOutline),
-    getSubtitle: () =>
-        '当前使用：${VideoUtils.effectiveCdnDesc()}，部分 CDN 可能失效，如无法播放请尝试切换',
-    onTap: _showCDNDialog,
-  ),
+  videoCdnSetting,
   NormalModel(
     title: '直播 CDN 设置',
     leading: const Icon(MdiIcons.cloudPlusOutline),
     getSubtitle: () => '当前使用：${Pref.liveCdnUrl ?? "默认"}',
     onTap: _showLiveCDNDialog,
   ),
-  const SwitchModel(
-    title: 'CDN 测速',
-    leading: Icon(Icons.speed),
-    subtitle: '测速通过模拟加载视频实现，注意流量消耗，结果仅供参考',
-    setKey: SettingBoxKey.cdnSpeedTest,
-    defaultVal: true,
-  ),
+  cdnSpeedTestSetting,
   SwitchModel(
     title: '音频不跟随 CDN 设置',
     subtitle: '直接采用备用 URL，可解决部分视频无声',
