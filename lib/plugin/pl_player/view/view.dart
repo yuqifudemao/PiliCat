@@ -2030,9 +2030,14 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
           Positioned(
             top: 52,
             right: 12,
-            child: PlaybackDownloadSpeed(
-              controller: plPlayerController,
-              alwaysVisible: true,
+            child: IgnorePointer(
+              child: FadeTransition(
+                opacity: _animationController,
+                child: PlaybackDownloadSpeed(
+                  controller: plPlayerController,
+                  alwaysVisible: true,
+                ),
+              ),
             ),
           ),
 
