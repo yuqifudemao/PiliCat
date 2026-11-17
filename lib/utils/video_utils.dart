@@ -75,6 +75,25 @@ abstract final class VideoUtils {
     return CdnNodeStore.labelOf(host) ?? '自定义：$host';
   }
 
+  /// Select an address exactly as returned, without changing its signature.
+  static String? originalCdnUrl(
+    Iterable<String> urls,
+    CDNService service, {
+    String? customHost,
+  }) {
+    final candidates = urls.where((url) => url.isNotEmpty).toSet();
+    final host = customHost ?? service.host;
+    if (host != null) {
+      for (final url in candidates) {
+        if (Uri.tryParse(url)?.host == host) return url;
+      }
+      return null;
+    }
+    return service == CDNService.backupUrl
+        ? candidates.skip(1).firstOrNull
+        : candidates.firstOrNull;
+  }
+
   /// [customHost] 显式指定自定义节点（节点测速用）；未传时按 [applyCustomCDN]
   /// 决定是否采用全局自定义节点。全局自定义生效时完全旁路枚举语义。
   static String getCdnUrl(
@@ -86,13 +105,14 @@ abstract final class VideoUtils {
     bool isAudio = false,
     bool? isBangumi,
   }) {
-    final upos = Pref.bangumiUpos;
     if (isBangumi != null &&
-        upos != null &&
         Pref.bangumiRoamingEnabled &&
         (isBangumi || Pref.bangumiUposForAll)) {
-      defaultCDNService ??= upos;
-      applyCustomCDN = false;
+      final upos = Pref.bangumiUpos;
+      if (upos != null) {
+        defaultCDNService ??= upos;
+        applyCustomCDN = false;
+      }
     }
     defaultCDNService ??= cdnService;
     customHost ??= applyCustomCDN ? customCDNUrl : null;
@@ -101,14 +121,13 @@ abstract final class VideoUtils {
     }
 
     if (preserveStreamUrls) {
-      final preferredHost = customHost ?? defaultCDNService.host;
-      if (preferredHost != null && !(isAudio && disableAudioCDN)) {
-        return urls.firstWhere(
-          (url) => Uri.tryParse(url)?.host == preferredHost,
-          orElse: () => urls.first,
-        );
-      }
-      return urls.first;
+      if (isAudio && disableAudioCDN) return urls.first;
+      return originalCdnUrl(
+            urls,
+            defaultCDNService,
+            customHost: customHost,
+          ) ??
+          urls.first;
     }
 
     if (customHost == null && defaultCDNService == CDNService.baseUrl) {

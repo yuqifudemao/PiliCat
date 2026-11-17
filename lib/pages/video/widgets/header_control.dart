@@ -612,22 +612,39 @@ class HeaderControlState extends State<HeaderControl>
                     title: const Text('CDN 设置', style: titleStyle),
                     leading: const Icon(MdiIcons.cloudPlusOutline, size: 20),
                     subtitle: Text(
-                      '当前：${VideoUtils.effectiveCdnDesc()}，无法播放请切换',
+                      videoDetailCtr.data.preserveStreamUrls
+                          ? '当前：${Pref.bangumiUpos?.desc ?? '跟随音视频设置'}'
+                          : '当前：${VideoUtils.effectiveCdnDesc()}，无法播放请切换',
                       style: subTitleStyle,
                     ),
                     onTap: () async {
                       Get.back();
+                      final current = videoDetailCtr.data;
                       final result = await showDialog<CdnSelectResult>(
                         context: context,
                         builder: (context) => CdnSelectDialog(
-                          sample: videoInfo.dash?.video?.firstOrNull,
+                          sample: current.dash?.video?.isNotEmpty == true
+                              ? videoDetailCtr.firstVideo
+                              : null,
+                          preserveStreamUrls: current.preserveStreamUrls,
                         ),
                       );
                       if (result != null) {
-                        await applyCdnSelectResult(
-                          result,
-                          toastSuffix: '，正在重载视频',
-                        );
+                        if (current.preserveStreamUrls) {
+                          if (result case CdnBuiltinResult(:final service)) {
+                            await GStorage.setting.put(
+                              SettingBoxKey.bangumiUpos,
+                              service.name,
+                            );
+                          } else if (result is CdnClearCustomResult) {
+                            await GStorage.setting.delete(SettingBoxKey.bangumiUpos);
+                          }
+                        } else {
+                          await applyCdnSelectResult(
+                            result,
+                            toastSuffix: '，正在重载视频',
+                          );
+                        }
                         videoDetailCtr.queryVideoUrl(fromReset: true);
                       }
                     },

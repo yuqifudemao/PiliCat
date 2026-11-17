@@ -14,6 +14,22 @@ void main() {
   setUp(() {
     VideoUtils.cdnService = CDNService.akamai;
     VideoUtils.disableAudioCDN = false;
+    VideoUtils.customCDNUrl = null;
+  });
+
+  test('signed playback chooses a distinct backup and retains its signature', () {
+    final urls = [cosov, cosov, akamai];
+    expect(
+      VideoUtils.getCdnUrl(
+        urls,
+        defaultCDNService: CDNService.backupUrl,
+        applyCustomCDN: false,
+        preserveStreamUrls: true,
+      ),
+      akamai,
+    );
+    expect(VideoUtils.originalCdnUrl(urls, CDNService.ali), isNull);
+    expect(VideoUtils.originalCdnUrl([cosov], CDNService.backupUrl), isNull);
   });
 
   test('Akamai selects its signed backup without changing any bytes', () {

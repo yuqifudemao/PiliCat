@@ -294,11 +294,13 @@ class CdnSelectDialog extends StatefulWidget {
     super.key,
     this.sample,
     this.uposOnly = false,
+    this.preserveStreamUrls = false;
     this.speedTest,
   });
 
   final BaseItem? sample;
   final bool uposOnly;
+  final bool preserveStreamUrls;
   final bool? speedTest;
 
   @override
@@ -340,15 +342,22 @@ class _CdnSelectDialogState extends State<CdnSelectDialog> {
   Future<void> _testAll() async {
     final tester = _tester!;
     try {
-      final sample = await tester.getSample();
+      final sample = widget.preserveStreamUrls
+          ? widget.sample
+          : await tester.getSample();
+      if (!mounted || sample == null) return;
       final urls = <String, List<CDNService>>{};
       for (final service in _services) {
-        final url = VideoUtils.getCdnUrl(
-          sample.playUrls,
-          defaultCDNService: service,
-          applyCustomCDN: false,
-        );
-        (urls[url] ??= []).add(service);
+        final url = widget.preserveStreamUrls
+            ? VideoUtils.originalCdnUrl(sample.playUrls, service)
+            : VideoUtils.getCdnUrl(
+                sample.playUrls,
+                defaultCDNService: service,
+                applyCustomCDN: false,
+              );
+        if (url != null && url.isNotEmpty) {
+          (urls[url] ??= []).add(service);
+        }
       }
       final pending = urls.entries.iterator;
       Future<void> measureNext() async {
@@ -395,8 +404,10 @@ class _CdnSelectDialogState extends State<CdnSelectDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final customHost = widget.uposOnly ? null : VideoUtils.customCDNUrl;
-    final selected = widget.uposOnly ? Pref.bangumiUpos : VideoUtils.cdnService;
+    final useUpos = widget.uposOnly || widget.preserveStreamUrls;
+    final customHost = useUpos ? null : VideoUtils.customCDNUrl;
+    final selected = useUpos ? Pref.bangumiUpos : VideoUtils.cdnService;
+    final signedUrls = widget.sample?.playUrls.toList() ?? const <String>[];
     return AlertDialog(
       clipBehavior: Clip.hardEdge,
       title: Text(widget.uposOnly
@@ -428,7 +439,7 @@ class _CdnSelectDialogState extends State<CdnSelectDialog> {
               ),
               const SizedBox(height: 8),
             ],
-            if (widget.uposOnly)
+            if (useUpos)
               M3eOptionItem(
                 selected: selected == null,
                 selectionControl: true,
@@ -436,25 +447,32 @@ class _CdnSelectDialogState extends State<CdnSelectDialog> {
                 onTap: () => Navigator.pop(context, const CdnClearCustomResult()),
               ),
             for (final service in _services)
-              M3eOptionItem(
-                selected:
-                    customHost == null && service == selected,
-                selectionControl: true,
-                title: Text(service.desc),
-                subtitle: _cdnSpeedTest
-                    ? ValueListenableBuilder(
-                        valueListenable: _speedResults[service.index],
-                        builder: (context, value, _) => Text(
-                          value ?? '测速中',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      )
-                    : null,
-                onTap: () =>
-                    Navigator.pop(context, CdnBuiltinResult(service)),
-              ),
-            if (!widget.uposOnly) ...[
+              if (widget.preserveStreamUrls &&
+                  VideoUtils.originalCdnUrl(signedUrls, service) == null)
+                M3eOptionItem(
+                  title: Text(service.desc),
+                  subtitle: const Text('本集未返回该地址'),
+                  selectionControl: true,
+                )
+              else
+                M3eOptionItem(
+                  selected: customHost == null && service == selected,
+                  selectionControl: true,
+                  title: Text(service.desc),
+                  subtitle: _cdnSpeedTest
+                      ? ValueListenableBuilder(
+                          valueListenable: _speedResults[service.index],
+                          builder: (context, value, _) => Text(
+                            value ?? '测速中',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        )
+                      : null,
+                  onTap: () =>
+                      Navigator.pop(context, CdnBuiltinResult(service)),
+                ),
+            if (!useUpos) ...[
               const SizedBox(height: 8),
               const Divider(height: 1, indent: 8, endIndent: 8),
               const SizedBox(height: 8),
