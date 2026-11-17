@@ -294,7 +294,7 @@ class CdnSelectDialog extends StatefulWidget {
     super.key,
     this.sample,
     this.uposOnly = false,
-    this.preserveStreamUrls = false;
+    this.preserveStreamUrls = false,
     this.speedTest,
   });
 
