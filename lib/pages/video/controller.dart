@@ -1045,6 +1045,7 @@ class VideoDetailController extends GetxController
               videoSource: videoUrl!,
               audioSource: audioUrl,
               backups: _pgcBackupSources(),
+              mediaHttpProfile: data.mediaHttpProfile,
             ),
       seekTo: seek,
       duration: data.timeLength == null

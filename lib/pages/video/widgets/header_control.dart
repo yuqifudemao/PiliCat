@@ -627,6 +627,7 @@ class HeaderControlState extends State<HeaderControl>
                               ? videoDetailCtr.firstVideo
                               : null,
                           preserveStreamUrls: current.preserveStreamUrls,
+                          mediaHttpProfile: current.mediaHttpProfile,
                         ),
                       );
                       if (result != null) {

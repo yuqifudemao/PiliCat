@@ -1,3 +1,4 @@
+import 'package:PiliPlus/http/media_http_profile.dart';
 import 'package:PiliPlus/utils/path_utils.dart';
 import 'package:path/path.dart' as path;
 
@@ -13,11 +14,13 @@ sealed class DataSource {
 
 class NetworkSource extends DataSource {
   final List<({String video, String? audio})> backups;
+  final MediaHttpProfile mediaHttpProfile;
 
   NetworkSource({
     required super.videoSource,
     required super.audioSource,
     this.backups = const [],
+    this.mediaHttpProfile = MediaHttpProfile.web,
   });
 }
 

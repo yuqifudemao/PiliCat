@@ -1,6 +1,13 @@
 name: Build
 
 on:
+  push:
+    branches:
+      - codex/pilicat-roaming-layout-search
+    paths:
+      - 'lib/**'
+      - 'test/**'
+      - '.github/workflows/build.yml'
   # pull_request:
   #     types:
   #         - opened
@@ -49,7 +56,7 @@ on:
 
 jobs:
   android:
-    if: ${{ (github.event_name == 'pull_request' && github.repository == 'Starfallan/PiliNara') || github.event.inputs.build_android == 'true' }}
+    if: ${{ (github.event_name == 'push' && github.repository == 'yuqifudemao/PiliCat') || (github.event_name == 'pull_request' && github.repository == 'Starfallan/PiliNara') || github.event.inputs.build_android == 'true' }}
     name: Release Android
     runs-on: ubuntu-latest
     permissions: write-all
@@ -83,8 +90,15 @@ jobs:
         run: lib/scripts/patch.ps1 android
         continue-on-error: true
 
+      - name: Test roaming media requests and signed CDN selection
+        run: >-
+          flutter test --reporter expanded
+          test/http/media_http_profile_test.dart
+          test/utils/media_url_diagnostics_test.dart
+          test/utils/cdn_url_test.dart
+
       - name: Load persistent Android signing key
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
         env:
           SIGN_KEYSTORE_BASE64: ${{ secrets.SIGN_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -121,7 +135,7 @@ jobs:
         run: lib/scripts/build.ps1 android
 
       - name: Flutter Build Release Apk
-        if: ${{ github.event_name == 'workflow_dispatch' }}
+        if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
         run: flutter build apk --release --split-per-abi --target-platform android-arm64 --dart-define-from-file=pili_release.json --pub
 
       - name: Flutter Build Dev Apk
@@ -137,7 +151,7 @@ jobs:
           done
 
       - name: Sign and verify Android release APKs
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
@@ -173,11 +187,13 @@ jobs:
           done
 
       - name: Release
-        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag != '' }}
+        if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.tag != '') }}
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ github.event.inputs.tag }}
-          name: ${{ github.event.inputs.tag }}
+          tag_name: ${{ github.event.inputs.tag || format('v2.2.0-roaming.{0}', github.run_number) }}
+          name: ${{ github.event.inputs.tag || format('PiliCat roaming fix {0}', github.run_number) }}
+          prerelease: ${{ github.event_name == 'push' }}
+          make_latest: ${{ github.event_name == 'push' && 'false' || 'true' }}
           target_commitish: ${{ github.sha }}
           files: PiliNara_android_*_arm64-v8a.apk
           fail_on_unmatched_files: true

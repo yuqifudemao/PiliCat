@@ -5,8 +5,7 @@ import 'dart:math' show max, min;
 import 'dart:ui' as ui;
 
 import 'package:PiliPlus/common/assets.dart';
-import 'package:PiliPlus/http/browser_ua.dart';
-import 'package:PiliPlus/http/constants.dart';
+import 'package:PiliPlus/http/media_http_profile.dart';
 import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/http/video.dart';
 import 'package:PiliPlus/models/common/account_type.dart';
@@ -47,6 +46,7 @@ import 'package:PiliPlus/utils/extension/native_geometry_ext.dart';
 import 'package:PiliPlus/utils/extension/num_ext.dart';
 import 'package:PiliPlus/utils/feed_back.dart';
 import 'package:PiliPlus/utils/image_utils.dart';
+import 'package:PiliPlus/utils/media_url_diagnostics.dart';
 import 'package:PiliPlus/utils/ios/pip_helper.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/path_utils.dart';
@@ -1248,8 +1248,6 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       player.setProperty('force-window', 'no');
     }
 
-    player.setMediaHeader(userAgent: BrowserUa.pc, referer: HttpString.baseUrl);
-
     _startListeners(player);
 
     return player;
@@ -1287,6 +1285,14 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
         await setShader();
       }
     }
+
+    final mediaProfile = dataSource is NetworkSource
+        ? dataSource.mediaHttpProfile
+        : MediaHttpProfile.web;
+    player.setMediaHeader(
+      userAgent: mediaProfile.userAgent,
+      referer: mediaProfile.referer,
+    );
 
     final Map<String, String> extras = {
       if (dataSource is FileSource)
@@ -1339,6 +1345,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
           (VideoUtils.customCDNUrl == null ? VideoUtils.cdnService.name : '自定义');
       PlaybackDiagnostics.record(
         '打开媒体 · ${_videoType.name} · CDN 策略 $node · '
+        '请求头 ${mediaProfile.label} · '
         '视频 ${_mediaHost(dataSource.videoSource)} · '
         '音频 ${_mediaHost(dataSource.audioSource)} · '
         '备用 ${dataSource.backups.length} 条',
@@ -1372,14 +1379,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     return null;
   }
 
-  String _mediaHost(String? url) {
-    if (url == null || url.isEmpty) return '无';
-    final uri = Uri.tryParse(url);
-    return uri != null && (uri.scheme == 'https' || uri.scheme == 'http') &&
-            uri.host.isNotEmpty
-        ? uri.host
-        : '未知';
-  }
+  String _mediaHost(String? url) => MediaUrlDiagnostics.describe(url);
 
   Future<void> _retryNetworkSource(
     NetworkSource failedSource, {
@@ -1622,7 +1622,9 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
         final tlsHandshakeEnded =
             event.startsWith('tls: mbedtls_ssl_handshake returned -0x7280');
         if (failedSource is NetworkSource) {
+          final httpStatus = MediaUrlDiagnostics.httpStatus(event);
           final category = switch (event) {
+            _ when httpStatus != null => 'HTTP $httpStatus',
             _ when tlsHandshakeEnded => 'TLS 握手中断 (-0x7280)',
             _ when event.startsWith('tls:') => 'TLS 错误',
             _ when event.startsWith('tcp:') => 'TCP 读取失败',

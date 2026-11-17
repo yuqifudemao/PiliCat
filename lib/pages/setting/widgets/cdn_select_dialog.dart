@@ -1,7 +1,6 @@
 import 'dart:async';
 
-import 'package:PiliPlus/http/browser_ua.dart';
-import 'package:PiliPlus/http/constants.dart';
+import 'package:PiliPlus/http/media_http_profile.dart';
 import 'package:PiliPlus/http/video.dart';
 import 'package:PiliPlus/models/common/video/cdn_type.dart';
 import 'package:PiliPlus/models/common/video/base_quality.dart';
@@ -9,6 +8,8 @@ import 'package:PiliPlus/models/common/video/video_type.dart';
 import 'package:PiliPlus/models/video/play/url.dart';
 import 'package:PiliPlus/pages/setting/widgets/cdn_node_dialog.dart';
 import 'package:PiliPlus/utils/cdn_node_store.dart';
+import 'package:PiliPlus/utils/media_url_diagnostics.dart';
+import 'package:PiliPlus/services/playback_diagnostics.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
@@ -63,7 +64,14 @@ Future<void> applyCdnSelectResult(
 
 /// 下载测速，供内置枚举全量测速与节点点按测速复用
 class CdnSpeedTester {
-  CdnSpeedTester({this.sample});
+  CdnSpeedTester({
+    this.sample,
+    this.mediaHttpProfile = MediaHttpProfile.web,
+    this.onDiagnostic,
+  });
+
+  final MediaHttpProfile mediaHttpProfile;
+  final void Function(String)? onDiagnostic;
 
   BaseItem? sample;
   Dio? _dio;
@@ -73,10 +81,7 @@ class CdnSpeedTester {
     BaseOptions(
       connectTimeout: const Duration(seconds: 15),
       receiveTimeout: const Duration(seconds: 15),
-      headers: {
-        'user-agent': BrowserUa.pc,
-        'referer': HttpString.baseUrl,
-      },
+      headers: mediaHttpProfile.headers,
     ),
   );
 
@@ -127,8 +132,12 @@ class CdnSpeedTester {
       token.cancel();
     });
     try {
-      await dio.get(
+      await dio.get<List<int>>(
         url,
+        options: Options(
+          responseType: ResponseType.bytes,
+          headers: {'range': 'bytes=0-${maxSize - 1}'},
+        ),
         cancelToken: token,
         onReceiveProgress: (count, total) {
           if (dataStart == null) {
@@ -154,11 +163,15 @@ class CdnSpeedTester {
         result ??= _describeError(e);
       }
     } catch (e) {
-      result ??= e.toString();
+      result ??= '测速请求失败';
     } finally {
       deadline.cancel();
       _tokens.remove(token);
     }
+    onDiagnostic?.call(
+      'CDN 测速 · ${mediaHttpProfile.label} · '
+      '${MediaUrlDiagnostics.describe(url)} · $result',
+    );
     return result!;
   }
 
@@ -295,12 +308,14 @@ class CdnSelectDialog extends StatefulWidget {
     this.sample,
     this.uposOnly = false,
     this.preserveStreamUrls = false,
+    this.mediaHttpProfile = MediaHttpProfile.web,
     this.speedTest,
   });
 
   final BaseItem? sample;
   final bool uposOnly;
   final bool preserveStreamUrls;
+  final MediaHttpProfile mediaHttpProfile;
   final bool? speedTest;
 
   @override
@@ -319,7 +334,13 @@ class _CdnSelectDialogState extends State<CdnSelectDialog> {
   void initState() {
     super.initState();
     if (_cdnSpeedTest) {
-      _tester = CdnSpeedTester(sample: widget.sample);
+      _tester = CdnSpeedTester(
+        sample: widget.sample,
+        mediaHttpProfile: widget.mediaHttpProfile,
+        onDiagnostic: widget.preserveStreamUrls
+            ? PlaybackDiagnostics.record
+            : null,
+      );
       _speedResults = List.generate(
         CDNService.values.length,
         (_) => ValueNotifier<String?>(null),

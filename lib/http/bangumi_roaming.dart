@@ -1,4 +1,5 @@
 import 'package:PiliPlus/http/loading_state.dart';
+import 'package:PiliPlus/http/media_http_profile.dart';
 import 'package:PiliPlus/models/search/result.dart';
 import 'package:PiliPlus/models/video/play/url.dart';
 import 'package:PiliPlus/models_new/pgc/pgc_info_model/result.dart';
@@ -286,6 +287,9 @@ abstract final class BangumiRoaming {
       final response = await client.getUri<dynamic>(requestUri);
       final body = response.data;
       final mode = useApp ? '安卓解析' : '网页解析';
+      final mediaProfile = useApp
+          ? MediaHttpProfile.android
+          : MediaHttpProfile.web;
       if (body is! Map<String, dynamic>) {
         return Error('$mode返回了非 JSON 对象');
       }
@@ -301,7 +305,11 @@ abstract final class BangumiRoaming {
             if (area == 'th') {
               final international = _internationalVideo(info);
               if (international != null) {
-                return Success(international..preserveStreamUrls = true);
+                return Success(
+                  international
+                    ..preserveStreamUrls = true
+                    ..mediaHttpProfile = mediaProfile,
+                );
               }
             }
             final dash = info['dash'];
@@ -310,7 +318,9 @@ abstract final class BangumiRoaming {
             if ((video is List && video.isNotEmpty) ||
                 (durl is List && durl.isNotEmpty)) {
               return Success(
-                PlayUrlModel.fromJson(info)..preserveStreamUrls = true,
+                PlayUrlModel.fromJson(info)
+                  ..preserveStreamUrls = true
+                  ..mediaHttpProfile = mediaProfile,
               );
             }
           }

@@ -1,5 +1,7 @@
 import 'dart:math' show max, min;
 
+import 'package:PiliPlus/http/media_http_profile.dart';
+
 import 'package:PiliPlus/models/common/video/base_quality.dart';
 import 'package:PiliPlus/models_new/sponsor_block/segment_item.dart';
 import 'package:PiliPlus/utils/extension/iterable_ext.dart';
@@ -26,6 +28,7 @@ class PlayUrlModel {
   });
 
   bool preserveStreamUrls = false;
+  MediaHttpProfile mediaHttpProfile = MediaHttpProfile.web;
   String? from;
   String? result;
   String? message;
