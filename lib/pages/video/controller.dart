@@ -72,6 +72,7 @@ import 'package:PiliPlus/utils/extension/num_ext.dart';
 import 'package:PiliPlus/utils/extension/size_ext.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/path_utils.dart';
+import 'package:PiliPlus/utils/playback_quality_loader.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/reply_scheme_helper.dart';
 import 'package:PiliPlus/utils/storage.dart';
@@ -907,9 +908,9 @@ class VideoDetailController extends GetxController
     final videoList = allVideos.where((i) => i.id == qa).toList();
 
     if (videoList.isEmpty) {
-      final fallback = allVideos.first;
+      final fallback = allVideos.findTargetMedia((video) => video.id, qa);
       currentVideoQa.value = VideoQuality.fromCode(fallback.id);
-      return fallback;
+      return findVideoByQa(fallback.id, setCodecs: setCodecs);
     }
 
     final currentCodes = currentDecodeFormats.codes;
@@ -943,9 +944,18 @@ class VideoDetailController extends GetxController
   }
 
   /// 更新画质、音质
-  void updatePlayer() {
+  Future<void> updatePlayer() async {
     final currentVideoQa = this.currentVideoQa.value;
     if (currentVideoQa == null) return;
+    final source = data;
+    final requestedCid = cid.value;
+    await _qualityLoaderFor(source).prepare(currentVideoQa.code);
+    if (isClosed ||
+        !identical(data, source) ||
+        cid.value != requestedCid ||
+        this.currentVideoQa.value?.code != currentVideoQa.code) {
+      return;
+    }
     _autoPlay.value = true;
     playedTime = plPlayerController.videoPlayerController?.state.position;
     plPlayerController
@@ -973,7 +983,7 @@ class VideoDetailController extends GetxController
       );
     }
 
-    playerInit();
+    await playerInit();
   }
 
   Future<void>? initPlayerIfNeeded(bool autoFullScreenFlag) {
@@ -1046,6 +1056,7 @@ class VideoDetailController extends GetxController
               audioSource: audioUrl,
               backups: _pgcBackupSources(),
               mediaHttpProfile: data.mediaHttpProfile,
+              isRoaming: data.preserveStreamUrls,
             ),
       seekTo: seek,
       duration: data.timeLength == null
@@ -1137,13 +1148,28 @@ class VideoDetailController extends GetxController
     );
   }
 
-  Future<void> _supplementVideoQualities() async {
-    final quality = data.missingVideoQualityBelowHighest;
-    if (quality == -1) return;
-    final result = await _getVideoUrl(quality);
-    if (result case Success(:final response)) {
-      data.dash!.video!.merge(response.dash?.video);
-    }
+  PlaybackQualityLoader? _qualityLoader;
+
+  PlaybackQualityLoader _qualityLoaderFor(PlayUrlModel source) {
+    final cached = _qualityLoader;
+    if (cached != null && identical(cached.source, source)) return cached;
+    final requestedCid = cid.value;
+    return _qualityLoader = PlaybackQualityLoader(
+      source: source,
+      isCurrent: () =>
+          !isClosed && identical(data, source) && cid.value == requestedCid,
+      request: (quality) async {
+        final timer = Stopwatch()..start();
+        PlaybackDiagnostics.record('补充清晰度 · $quality');
+        try {
+          return (await _getVideoUrl(quality)).dataOrNull;
+        } finally {
+          PlaybackDiagnostics.record(
+            '清晰度请求结束 · $quality · ${timer.elapsedMilliseconds} ms',
+          );
+        }
+      },
+    );
   }
 
   Volume? volume;
@@ -1238,7 +1264,14 @@ class VideoDetailController extends GetxController
 
     if (result case Success(:final response)) {
       data = response;
-      if (data.dash != null) await _supplementVideoQualities();
+      final qualityLoader = _qualityLoaderFor(response);
+      final requestedCid = cid.value;
+      await qualityLoader.prepare(
+        plPlayerController.cacheVideoQa ?? VideoQuality.high1080.code,
+      );
+      if (isClosed || !identical(data, response) || cid.value != requestedCid) {
+        return;
+      }
 
       languages.value = data.language?.items;
       currLang.value = data.curLanguage;
@@ -1387,6 +1420,7 @@ class VideoDetailController extends GetxController
           });
         }
       }
+      unawaited(qualityLoader.complete());
     } else {
       _autoPlay.value = false;
       videoState.value = false;

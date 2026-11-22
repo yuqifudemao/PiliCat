@@ -1299,6 +1299,8 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
         'cache': 'no'
       else if (isLive)
         ...liveBuffer
+      else if (dataSource is NetworkSource && dataSource.isRoaming)
+        ...Pref.initRoamingBuffer(_playbackSpeed.value)
       else
         ...buffer,
       'video-rotate': ?rotate?.toString(),
@@ -1338,7 +1340,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       _diagnosticStartPosition = seekTo ?? Duration.zero;
       _startupTimer = Stopwatch();
       final upos = Pref.bangumiRoamingEnabled &&
-              (_videoType != VideoType.ugc || Pref.bangumiUposForAll)
+              (dataSource.isRoaming || Pref.bangumiUposForAll)
           ? Pref.bangumiUpos
           : null;
       final node = upos?.name ??

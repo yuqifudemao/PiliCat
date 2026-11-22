@@ -1440,8 +1440,26 @@ abstract final class Pref {
       _setting.get(SettingBoxKey.liveBufferSec, defaultValue: 0.0);
 
   static Map<String, String> initBuffer([double playbackSpeed = 1.0]) {
-    final bufSec = Pref.bufferSec * playbackSpeed;
-    final bufSiz = (Pref.bufferSize * 0x100000).toStringAsFixed(0);
+    return _vodBuffer(bufferSize, bufferSec, playbackSpeed);
+  }
+
+  static Map<String, String> initRoamingBuffer([double playbackSpeed = 1.0]) {
+    // Increase prefetch capacity only for roaming streams using default values.
+    // Explicit user choices remain authoritative; startup wait is unchanged.
+    return _vodBuffer(
+      _setting.get(SettingBoxKey.bufferSize, defaultValue: 32.0),
+      _setting.get(SettingBoxKey.bufferSec, defaultValue: 30.0),
+      playbackSpeed,
+    );
+  }
+
+  static Map<String, String> _vodBuffer(
+    double sizeMb,
+    double seconds,
+    double playbackSpeed,
+  ) {
+    final bufSec = seconds * playbackSpeed;
+    final bufSiz = (sizeMb * 0x100000).toStringAsFixed(0);
     return {
       'cache': 'yes',
       'cache-secs': bufSec.toStringAsFixed(3),

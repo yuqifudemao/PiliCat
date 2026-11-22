@@ -15,12 +15,14 @@ sealed class DataSource {
 class NetworkSource extends DataSource {
   final List<({String video, String? audio})> backups;
   final MediaHttpProfile mediaHttpProfile;
+  final bool isRoaming;
 
   NetworkSource({
     required super.videoSource,
     required super.audioSource,
     this.backups = const [],
     this.mediaHttpProfile = MediaHttpProfile.web,
+    this.isRoaming = false,
   });
 }
 

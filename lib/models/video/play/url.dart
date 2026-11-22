@@ -61,6 +61,22 @@ class PlayUrlModel {
   Language? language;
   List<SegmentItemModel>? clipInfoList;
 
+  int missingQualityForPlayback(int preferredQuality) {
+    final videos = dash?.video;
+    if (videos == null || videos.isEmpty) return -1;
+    final available = videos.availableVideoQualities;
+    final highest = available.reduce(max);
+    final advertised = (acceptQuality ?? available.toList())
+        .where((quality) => quality <= highest)
+        .toList();
+    if (advertised.isEmpty) return -1;
+    final target = advertised.findTargetMedia(
+      (quality) => quality,
+      preferredQuality,
+    );
+    return available.contains(target) ? -1 : target;
+  }
+
   @pragma('vm:notify-debugger-on-exception')
   int get missingVideoQualityBelowHighest {
     int best = -1;

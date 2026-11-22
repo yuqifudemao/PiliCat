@@ -190,14 +190,14 @@ List<SettingsModel> get videoSettings => [
     title: '缓冲大小',
     leading: const Icon(Icons.storage_outlined),
     getSubtitle: () =>
-        '当前：${Pref.bufferSize}MB。点播视频的前向和后向缓冲区大小（此选项即mpv的--demuxer-max-bytes，--demuxer-max-back-bytes）。直播流请设置下方的直播缓冲大小',
+        '当前：${Pref.bufferSize}MB。点播视频的前向和后向缓冲区大小。漫游番剧未自定义时使用32MB；手动设置后按此值使用。直播流请设置下方的直播缓冲大小',
     onTap: _showBufferSizeDialog,
   ),
   NormalModel(
     title: '缓冲时长',
     leading: const Icon(Icons.av_timer),
     getSubtitle: () =>
-        '当前：${Pref.bufferSec}s。点播视频的实际缓冲为大小与时长二者的最小值（此选项即mpv的--cache-secs）。直播流该选项无效，请设置下方的直播缓冲时长',
+        '当前：${Pref.bufferSec}s。点播视频的实际缓冲为大小与时长二者的最小值。漫游番剧未自定义时预取最多30秒；手动设置后按此值使用。直播流请设置下方的直播缓冲时长',
     onTap: _showBufferSecDialog,
   ),
   NormalModel(

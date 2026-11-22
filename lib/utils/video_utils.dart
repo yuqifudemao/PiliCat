@@ -107,7 +107,7 @@ abstract final class VideoUtils {
   }) {
     if (isBangumi != null &&
         Pref.bangumiRoamingEnabled &&
-        (isBangumi || Pref.bangumiUposForAll)) {
+        (preserveStreamUrls || Pref.bangumiUposForAll)) {
       final upos = Pref.bangumiUpos;
       if (upos != null) {
         defaultCDNService ??= upos;
@@ -245,19 +245,11 @@ abstract final class VideoUtils {
 
   static int _findAvailableVideoQuality(
     List<VideoItem> videoList,
-    List<int>? acceptQuality,
     int preferQuality,
   ) {
-    final highestVideoQa = videoList.first.id;
-    if (preferQuality >= highestVideoQa) {
-      return highestVideoQa;
-    }
-
-    if (acceptQuality != null && acceptQuality.isNotEmpty) {
-      return acceptQuality.findTargetMedia((e) => e, preferQuality);
-    }
-
-    return videoList.findTargetMedia((e) => e.id, preferQuality).quality.code;
+    // Advertised formats can be missing from the actual DASH response. Choose
+    // a real stream if fetching the preferred quality failed or was declined.
+    return videoList.findTargetMedia((e) => e.id, preferQuality).id;
   }
 
   static (
@@ -277,7 +269,6 @@ abstract final class VideoUtils {
 
     final targetQuality = _findAvailableVideoQuality(
       videoList,
-      acceptQuality,
       preferQuality,
     );
 
