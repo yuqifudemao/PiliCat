@@ -5,7 +5,6 @@ import 'package:PiliPlus/http/video.dart';
 import 'package:PiliPlus/models/common/video/cdn_type.dart';
 import 'package:PiliPlus/models/common/video/base_quality.dart';
 import 'package:PiliPlus/models/common/video/video_type.dart';
-import 'package:PiliPlus/models/video/play/url.dart';
 import 'package:PiliPlus/pages/setting/widgets/cdn_node_dialog.dart';
 import 'package:PiliPlus/utils/cdn_node_store.dart';
 import 'package:PiliPlus/utils/media_url_diagnostics.dart';
@@ -65,7 +64,7 @@ Future<void> applyCdnSelectResult(
 /// 下载测速，供内置枚举全量测速与节点点按测速复用
 class CdnSpeedTester {
   CdnSpeedTester({
-    this.sample,
+    this.sampleUrls,
     this.mediaHttpProfile = MediaHttpProfile.web,
     this.onDiagnostic,
   });
@@ -73,7 +72,7 @@ class CdnSpeedTester {
   final MediaHttpProfile mediaHttpProfile;
   final void Function(String)? onDiagnostic;
 
-  BaseItem? sample;
+  List<String>? sampleUrls;
   Dio? _dio;
   final List<CancelToken> _tokens = [];
 
@@ -85,8 +84,8 @@ class CdnSpeedTester {
     ),
   );
 
-  Future<BaseItem> getSample() async {
-    if (sample case final sample?) {
+  Future<List<String>> getSampleUrls() async {
+    if (sampleUrls case final sample?) {
       return sample;
     }
     final result = await VideoHttp.videoUrl(
@@ -96,9 +95,9 @@ class CdnSpeedTester {
       tryLook: false,
       videoType: VideoType.ugc,
     );
-    final item = result.dataOrNull?.dash?.video?.first;
-    if (item == null) throw Exception('无法获取视频流');
-    return sample = item;
+    final urls = result.dataOrNull?.cdnTestUrls();
+    if (urls == null || urls.isEmpty) throw Exception('无法获取视频流');
+    return sampleUrls = urls;
   }
 
   /// 从首包到达开始计时（剔除建连与首字节耗时），下载 2MB 或 5s 即出结果
@@ -305,14 +304,15 @@ class M3eOptionItem extends StatelessWidget {
 class CdnSelectDialog extends StatefulWidget {
   const CdnSelectDialog({
     super.key,
-    this.sample,
+    this.sampleUrls,
     this.uposOnly = false,
     this.preserveStreamUrls = false,
     this.mediaHttpProfile = MediaHttpProfile.web,
     this.speedTest,
   });
 
-  final BaseItem? sample;
+  // null requests the settings sample; an empty list is a video with no URLs.
+  final List<String>? sampleUrls;
   final bool uposOnly;
   final bool preserveStreamUrls;
   final MediaHttpProfile mediaHttpProfile;
@@ -335,9 +335,9 @@ class _CdnSelectDialogState extends State<CdnSelectDialog> {
     super.initState();
     if (_cdnSpeedTest) {
       _tester = CdnSpeedTester(
-        sample: widget.sample,
+        sampleUrls: widget.sampleUrls,
         mediaHttpProfile: widget.mediaHttpProfile,
-        onDiagnostic: widget.preserveStreamUrls
+        onDiagnostic: widget.sampleUrls != null
             ? PlaybackDiagnostics.record
             : null,
       );
@@ -363,21 +363,19 @@ class _CdnSelectDialogState extends State<CdnSelectDialog> {
   Future<void> _testAll() async {
     final tester = _tester!;
     try {
-      final sample = widget.preserveStreamUrls
-          ? widget.sample
-          : await tester.getSample();
-      if (!mounted || sample == null) return;
+      final sample = await tester.getSampleUrls();
+      if (!mounted) return;
       final urls = <String, List<CDNService>>{};
       for (final service in _services) {
-        final url = widget.preserveStreamUrls
-            ? VideoUtils.originalCdnUrl(sample.playUrls, service)
-            : VideoUtils.getCdnUrl(
-                sample.playUrls,
-                defaultCDNService: service,
-                applyCustomCDN: false,
-              );
-        if (url != null && url.isNotEmpty) {
+        final url = VideoUtils.cdnTestUrl(
+          sample,
+          service,
+          preserveStreamUrls: widget.preserveStreamUrls,
+        );
+        if (url != null) {
           (urls[url] ??= []).add(service);
+        } else {
+          _speedResults[service.index].value = '当前视频没有该节点的测速地址';
         }
       }
       final pending = urls.entries.iterator;
@@ -404,8 +402,10 @@ class _CdnSelectDialogState extends State<CdnSelectDialog> {
   Future<void> _pickNode() async {
     final host = await showDialog<String>(
       context: context,
-      builder: (context) =>
-          CdnNodeDialog(sample: _tester?.sample ?? widget.sample),
+      builder: (context) => CdnNodeDialog(
+        sampleUrls: _tester?.sampleUrls ?? widget.sampleUrls,
+        mediaHttpProfile: widget.mediaHttpProfile,
+      ),
     );
     if (host != null && mounted) {
       Navigator.pop(context, CdnCustomResult(host));
@@ -428,7 +428,7 @@ class _CdnSelectDialogState extends State<CdnSelectDialog> {
     final useUpos = widget.uposOnly || widget.preserveStreamUrls;
     final customHost = useUpos ? null : VideoUtils.customCDNUrl;
     final selected = useUpos ? Pref.bangumiUpos : VideoUtils.cdnService;
-    final signedUrls = widget.sample?.playUrls.toList() ?? const <String>[];
+    final signedUrls = widget.sampleUrls ?? const <String>[];
     return AlertDialog(
       clipBehavior: Clip.hardEdge,
       title: Text(widget.uposOnly

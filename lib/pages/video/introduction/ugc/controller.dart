@@ -66,7 +66,14 @@ class UgcIntroController extends CommonIntroController with ReloadMixin {
   late final enableAi = Pref.enableAi;
   late final horizontalMemberPage = Pref.horizontalMemberPage;
 
-  AiConclusionResult? aiConclusionResult;
+  ({String bvid, int cid, AiConclusionResult result})? _conclusion;
+
+  AiConclusionResult? get aiConclusionResult {
+    final cached = _conclusion;
+    return cached != null && cached.bvid == bvid && cached.cid == cid.value
+        ? cached.result
+        : null;
+  }
 
   late final Map<int?, bool> seasonFavState = {};
 
@@ -570,7 +577,6 @@ class UgcIntroController extends CommonIntroController with ReloadMixin {
 
       if (lastBvid != bvid) {
         reload = true;
-        aiConclusionResult = null;
 
         if (cover != null && cover.isNotEmpty) {
           videoDetailCtr.cover.value = cover;
@@ -822,19 +828,18 @@ class UgcIntroController extends CommonIntroController with ReloadMixin {
   static Future<AiConclusionResult?> getAiConclusion(
     String bvid,
     int cid,
-    int? mid,
-  ) async {
+    int? mid, {
+    bool showLoading = true,
+  }) async {
     if (!Accounts.heartbeat.isLogin) {
       SmartDialog.showToast("账号未登录");
       return null;
     }
-    SmartDialog.showLoading(msg: '正在获取AI总结');
-    final res = await VideoHttp.aiConclusion(
-      bvid: bvid,
-      cid: cid,
-      upMid: mid,
-    );
-    SmartDialog.dismiss();
+    if (showLoading) SmartDialog.showLoading(msg: '正在获取AI总结');
+    final res = await VideoHttp.aiConclusion(bvid: bvid, cid: cid, upMid: mid)
+        .whenComplete(() {
+          if (showLoading) SmartDialog.dismiss();
+        });
     if (res case Success(:final response)) {
       return response.modelResult;
     } else if (res is Error && res.code == 1) {
@@ -845,12 +850,23 @@ class UgcIntroController extends CommonIntroController with ReloadMixin {
     return null;
   }
 
-  Future<void> aiConclusion() async {
-    aiConclusionResult = await getAiConclusion(
-      bvid,
-      cid.value,
+  Future<AiConclusionResult?> aiConclusion({bool showLoading = true}) async {
+    final cached = aiConclusionResult;
+    if (cached != null) return cached;
+    final currentBvid = bvid;
+    final currentCid = cid.value;
+    final result = await getAiConclusion(
+      currentBvid,
+      currentCid,
       videoDetail.value.owner?.mid,
+      showLoading: showLoading,
     );
+    if (isClosed || currentBvid != bvid || currentCid != cid.value) return null;
+    if (result != null &&
+        (result.summary?.isNotEmpty == true || result.outline?.isNotEmpty == true)) {
+      _conclusion = (bvid: currentBvid, cid: currentCid, result: result);
+    }
+    return result;
   }
 
 }

@@ -61,6 +61,23 @@ class PlayUrlModel {
   Language? language;
   List<SegmentItemModel>? clipInfoList;
 
+  /// Probe a real URL from the playing quality or the first playable segment.
+  /// An EDL assembled for mpv is not an HTTP speed-test target.
+  List<String> cdnTestUrls([VideoItem? selected]) {
+    final videos = dash?.video;
+    if (videos != null && videos.isNotEmpty) {
+      final video = selected != null && videos.contains(selected)
+          ? selected
+          : videos.first;
+      return video.playUrls.where((url) => url.isNotEmpty).toList();
+    }
+    for (final segment in durl ?? const <Durl>[]) {
+      final urls = segment.playUrls.where((url) => url.isNotEmpty).toList();
+      if (urls.isNotEmpty) return urls;
+    }
+    return const [];
+  }
+
   int missingQualityForPlayback(int preferredQuality) {
     final videos = dash?.video;
     if (videos == null || videos.isEmpty) return -1;

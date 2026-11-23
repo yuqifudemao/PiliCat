@@ -18,6 +18,7 @@ import 'package:PiliPlus/models/common/super_resolution_type.dart';
 import 'package:PiliPlus/models/common/video/base_quality.dart';
 import 'package:PiliPlus/models/common/video/video_decode_type.dart';
 import 'package:PiliPlus/models/video/play/url.dart';
+import 'package:PiliPlus/pages/ai_chat/view.dart';
 import 'package:PiliPlus/models_new/video/video_play_info/subtitle.dart';
 import 'package:PiliPlus/pages/common/common_intro_controller.dart';
 import 'package:PiliPlus/pages/danmaku/danmaku_model.dart';
@@ -32,6 +33,7 @@ import 'package:PiliPlus/pages/video/introduction/ugc/controller.dart';
 import 'package:PiliPlus/pages/video/introduction/ugc/widgets/action_item.dart';
 import 'package:PiliPlus/pages/video/introduction/ugc/widgets/menu_row.dart';
 import 'package:PiliPlus/pages/video/widgets/header_mixin.dart';
+import 'package:PiliPlus/pages/video/widgets/player_ai_summary.dart';
 import 'package:PiliPlus/plugin/pl_player/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/models/data_source.dart';
 import 'package:PiliPlus/plugin/pl_player/models/play_repeat.dart';
@@ -623,9 +625,7 @@ class HeaderControlState extends State<HeaderControl>
                       final result = await showDialog<CdnSelectResult>(
                         context: context,
                         builder: (context) => CdnSelectDialog(
-                          sample: current.dash?.video?.isNotEmpty == true
-                              ? videoDetailCtr.firstVideo
-                              : null,
+                          sampleUrls: videoDetailCtr.cdnTestUrls,
                           preserveStreamUrls: current.preserveStreamUrls,
                           mediaHttpProfile: current.mediaHttpProfile,
                         ),
@@ -1811,6 +1811,24 @@ class HeaderControlState extends State<HeaderControl>
   static const btnHeight = 34.0;
   static const btnStyle = ButtonStyle(padding: WidgetStatePropertyAll(.zero));
 
+  void _showAiSummary() {
+    final assistant = Pref.enableAiChat;
+    final official = videoDetailCtr.isUgc && Pref.enableAi;
+    if (!assistant && !official) return;
+    showBottomSheet(
+      (_, _) => Obx(
+        () => PlayerAiSummary(
+          key: ValueKey(videoDetailCtr.cid.value),
+          assistant: assistant ? AiChatPage(heroTag: heroTag, inPlayer: true) : null,
+          loadConclusion: official
+              ? () => videoDetailCtr.ugcIntroCtr.aiConclusion(showLoading: false)
+              : null,
+          onSeek: (seconds) => plPlayerController.seekTo(Duration(seconds: seconds)),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isFullScreen = this.isFullScreen;
@@ -1933,6 +1951,27 @@ class HeaderControlState extends State<HeaderControl>
               children: [
                 // show current datetime
                 ...?timeBatteryWidgets,
+                if (!isPortrait &&
+                    !isFileSource &&
+                    !plPlayerController.isDesktopPip &&
+                    (Pref.enableAiChat || (videoDetailCtr.isUgc && Pref.enableAi)))
+                  SizedBox(
+                    width: btnWidth,
+                    height: btnHeight,
+                    child: IconButton(
+                      tooltip: 'AI 总结',
+                      style: btnStyle,
+                      onPressed: _showAiSummary,
+                      icon: const Text(
+                        'AI',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
                 if (PlatformUtils.isDesktop && !plPlayerController.isDesktopPip)
                   Obx(() {
                     final isAlwaysOnTop =

@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:PiliPlus/http/video.dart';
 import 'package:PiliPlus/pages/ai_chat/models.dart';
 import 'package:PiliPlus/pages/video/controller.dart';
-import 'package:PiliPlus/pages/video/introduction/ugc/controller.dart';
 import 'package:PiliPlus/services/ai_chat/ai_chat_service.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:dio/dio.dart';
@@ -22,6 +21,7 @@ class AiChatController extends GetxController {
 
   final String heroTag;
   late final VideoDetailController _videoCtl;
+  late final StreamSubscription<int> _partChanges;
 
   AiChatController({required this.heroTag});
 
@@ -60,10 +60,12 @@ class AiChatController extends GetxController {
   void onInit() {
     super.onInit();
     _videoCtl = Get.find<VideoDetailController>(tag: heroTag);
+    _partChanges = _videoCtl.cid.listen((_) => clearMessages());
   }
 
   @override
   void onClose() {
+    _partChanges.cancel();
     cancelRequest();
     _stopReasoningTimer();
     super.onClose();
@@ -72,21 +74,25 @@ class AiChatController extends GetxController {
   bool get hasSubtitles => _videoCtl.subtitles.isNotEmpty;
 
   String _buildVideoInfo() {
-    String info = '';
-    try {
-      final videoDetail =
-          Get.find<UgcIntroController>(tag: heroTag).videoDetail.value;
-      final title = videoDetail.title;
-      final desc = videoDetail.desc;
-      if (title != null && title.isNotEmpty) {
-        info = '视频标题：$title\n';
-      }
-      if (desc != null && desc.isNotEmpty) {
-        info += '视频简介：$desc\n';
-      }
-      if (info.isNotEmpty) info += '\n';
-    } catch (_) {}
-    return info;
+    if (_videoCtl.isFileSource) return '';
+    final String? title;
+    final String? desc;
+    if (_videoCtl.isUgc) {
+      final video = _videoCtl.ugcIntroCtr.videoDetail.value;
+      title = video.title;
+      desc = video.desc;
+    } else {
+      final intro = _videoCtl.pgcIntroCtr;
+      title = [intro.pgcItem.title, intro.videoDetail.value.title]
+          .whereType<String>()
+          .where((s) => s.isNotEmpty)
+          .join(' · ');
+      desc = intro.pgcItem.evaluate;
+    }
+    return [
+      if (title != null && title.isNotEmpty) '视频标题：$title\n',
+      if (desc != null && desc.isNotEmpty) '视频简介：$desc\n',
+    ].join();
   }
 
   /// 只载入上下文，不请求 AI；字幕下载与分析请求共用取消入口。

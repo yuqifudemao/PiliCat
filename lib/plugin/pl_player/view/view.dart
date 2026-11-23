@@ -2059,10 +2059,10 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
                                 child: Align(
                                   alignment: Alignment.centerRight,
                                   child: IgnorePointer(
-                                    child: PlaybackDownloadSpeed(
-                                      controller: plPlayerController,
-                                      alwaysVisible: true,
-                                    ),
+                                    child: Obx(() => TickerMode(
+                                      enabled: plPlayerController.showControls.value,
+                                      child: PlaybackDownloadSpeed(controller: plPlayerController),
+                                    )),
                                   ),
                                 ),
                               ),

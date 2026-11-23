@@ -2,20 +2,18 @@ import 'dart:async' show Timer, unawaited;
 import 'dart:io' show Platform;
 
 import 'package:PiliPlus/plugin/pl_player/controller.dart';
+import 'package:PiliPlus/utils/playback_rate_meter.dart';
 import 'package:PiliPlus/utils/utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MissingPluginException, PlatformException;
-import 'package:media_kit/media_kit.dart' show NativePlayer;
 
 class PlaybackDownloadSpeed extends StatefulWidget {
   const PlaybackDownloadSpeed({
     super.key,
     required this.controller,
-    this.alwaysVisible = false,
   });
 
   final PlPlayerController controller;
-  final bool alwaysVisible;
 
   @override
   State<PlaybackDownloadSpeed> createState() => _PlaybackDownloadSpeedState();
@@ -27,24 +25,23 @@ class _PlaybackDownloadSpeedState extends State<PlaybackDownloadSpeed> {
   String? _label;
   bool _appRate = false;
   bool _sampling = false;
-  int? _previousBytes;
-  int? _previousTime;
+  final _meter = PlaybackRateMeter();
+  Object? _source;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final visible = TickerMode.of(context);
-    if ((visible || widget.alwaysVisible) && _timer == null) {
+    if (visible && _timer == null) {
       _timer = Timer.periodic(
         const Duration(seconds: 1),
         (_) => unawaited(_update()),
       );
       unawaited(_update());
-    } else if (!visible && !widget.alwaysVisible) {
+    } else if (!visible) {
       _timer?.cancel();
       _timer = null;
-      _previousBytes = null;
-      _previousTime = null;
+      _meter.reset();
       _label = null;
       _appRate = false;
     }
@@ -54,16 +51,20 @@ class _PlaybackDownloadSpeedState extends State<PlaybackDownloadSpeed> {
     final timer = _timer;
     if (timer == null || _sampling) return;
     final player = widget.controller.videoPlayerController;
-    var rate = player is NativePlayer && !player.state.completed
-        ? double.tryParse(player.getProperty('cache-speed'))
-        : null;
-    var appRate = false;
-    if ((rate == null || !rate.isFinite || rate < 0) &&
-        Platform.isAndroid &&
-        player != null &&
-        (player.state.playing || player.state.buffering)) {
+    if (player == null || player.disposed || player.state.completed) {
+      _meter.reset();
+      _show(null);
+      return;
+    }
+    final source = widget.controller.dataSource;
+    if (!identical(source, _source)) {
+      _source = source;
+      _meter.reset();
+    }
+    final mediaRate = double.tryParse(player.getProperty('cache-speed'));
+    int? bytes;
+    if (Platform.isAndroid) {
       _sampling = true;
-      int? bytes;
       try {
         bytes = await Utils.channel.invokeMethod<int>('getAppRxBytes');
       } on MissingPluginException {
@@ -73,41 +74,29 @@ class _PlaybackDownloadSpeedState extends State<PlaybackDownloadSpeed> {
       } finally {
         _sampling = false;
       }
-      if (!mounted || _timer != timer) return;
-      final now = _clock.elapsedMicroseconds;
-      final previousBytes = _previousBytes;
-      final previousTime = _previousTime;
-      _previousBytes = bytes;
-      _previousTime = bytes == null ? null : now;
-      if (bytes != null &&
-          previousBytes != null &&
-          previousTime != null &&
-          bytes >= previousBytes &&
-          now > previousTime) {
-        rate = (bytes - previousBytes) * Duration.microsecondsPerSecond /
-            (now - previousTime);
-        appRate = true;
+      if (!mounted ||
+          _timer != timer ||
+          !identical(player, widget.controller.videoPlayerController) ||
+          !identical(source, widget.controller.dataSource)) {
+        return;
       }
-    } else {
-      _previousBytes = null;
-      _previousTime = null;
     }
-    final label = rate != null && rate.isFinite && rate >= 0
-        ? _formatRate(rate)
-        : null;
+    _show(_meter.sample(
+      mediaRate: mediaRate,
+      appBytes: bytes,
+      nowMicros: _clock.elapsedMicroseconds,
+    ));
+  }
+
+  void _show(PlaybackRate? rate) {
+    final label = rate == null ? null : PlaybackRateMeter.format(rate.bytesPerSecond);
+    final appRate = rate?.appWide ?? false;
     if (mounted && (label != _label || appRate != _appRate)) {
       setState(() {
         _label = label;
         _appRate = appRate;
       });
     }
-  }
-
-  String _formatRate(double bytesPerSecond) {
-    final kib = bytesPerSecond / 1024;
-    return kib >= 1024
-        ? '${(kib / 1024).toStringAsFixed(1)} MiB/s'
-        : '${kib.toStringAsFixed(0)} KiB/s';
   }
 
   @override
@@ -130,7 +119,7 @@ class _PlaybackDownloadSpeedState extends State<PlaybackDownloadSpeed> {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
           child: Text(
-        '${_appRate ? 'App 网速' : '网速'} ${_label ?? '—'}',
+            '${_appRate ? 'App 网速' : '网速'} ${_label ?? '—'}',
             style: const TextStyle(
               fontSize: 12,
               color: Colors.white,

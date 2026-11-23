@@ -94,6 +94,31 @@ abstract final class VideoUtils {
         : candidates.firstOrNull;
   }
 
+  /// A playback fallback on another host cannot measure the named node.
+  static String? cdnTestUrl(
+    List<String> urls,
+    CDNService service, {
+    bool preserveStreamUrls = false,
+    String? customHost,
+  }) {
+    if (urls.isEmpty) return null;
+    final url = preserveStreamUrls
+        ? originalCdnUrl(urls, service, customHost: customHost)
+        : getCdnUrl(
+            urls,
+            defaultCDNService: service,
+            customHost: customHost,
+            applyCustomCDN: false,
+          );
+    final uri = url == null ? null : Uri.tryParse(url);
+    if (uri == null || uri.host.isEmpty ||
+        (uri.scheme != 'https' && uri.scheme != 'http')) {
+      return null;
+    }
+    final host = customHost ?? service.host;
+    return host == null || uri.host == host ? url : null;
+  }
+
   /// [customHost] 显式指定自定义节点（节点测速用）；未传时按 [applyCustomCDN]
   /// 决定是否采用全局自定义节点。全局自定义生效时完全旁路枚举语义。
   static String getCdnUrl(

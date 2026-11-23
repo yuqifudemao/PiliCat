@@ -23,6 +23,7 @@ class AiConclusionPanel extends CommonSlidePage {
     AiConclusionResult res, {
     Key? key,
     bool tap = true,
+    ValueChanged<int>? onSeek,
   }) {
     final outline = res.outline;
     final hasOutline = outline != null && outline.isNotEmpty;
@@ -92,14 +93,18 @@ class AiConclusionPanel extends CommonSlidePage {
                                     text: DurationUtils.formatDuration(
                                       item.timestamp,
                                     ),
-                                    style: tap
+                                    style: tap && item.timestamp != null
                                         ? TextStyle(
                                             color: theme.colorScheme.primary,
                                           )
                                         : null,
-                                    recognizer: tap
+                                    recognizer: tap && item.timestamp != null
                                         ? (NoDeadlineTapGestureRecognizer()
                                             ..onTap = () {
+                                              if (onSeek != null) {
+                                                onSeek(item.timestamp!);
+                                                return;
+                                              }
                                               try {
                                                 Get.find<VideoDetailController>(
                                                   tag: Get.arguments['heroTag'],

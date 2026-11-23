@@ -157,7 +157,7 @@ class VideoDetailController extends GetxController
   late TabController tabCtr;
 
   // 请求返回的视频信息
-  late PlayUrlModel data;
+  PlayUrlModel data = PlayUrlModel();
   final RxBool videoState = false.obs;
 
   /// 播放器配置 画质 音质 解码格式
@@ -179,7 +179,9 @@ class VideoDetailController extends GetxController
   bool get removeSafeArea => plPlayerController.removeSafeArea;
   double get uiScale => plPlayerController.uiScale;
 
-  late VideoItem firstVideo;
+  VideoItem? _firstVideo;
+  VideoItem get firstVideo => _firstVideo!;
+  List<String> get cdnTestUrls => data.cdnTestUrls(_firstVideo);
   String? videoUrl;
   String? audioUrl;
   Duration? defaultST;
@@ -430,7 +432,7 @@ class VideoDetailController extends GetxController
         }
       }
     }
-    firstVideo = VideoItem(
+    _firstVideo = VideoItem(
       id: entry.preferedVideoQuality,
       quality: VideoQuality.fromCode(entry.preferedVideoQuality),
       width: entry.ep?.width ?? entry.pageData?.width ?? 1,
@@ -962,7 +964,7 @@ class VideoDetailController extends GetxController
       ..isBuffering.value = false
       ..buffered.value = 0;
 
-    firstVideo = findVideoByQa(currentVideoQa.code, setCodecs: true);
+    _firstVideo = findVideoByQa(currentVideoQa.code, setCodecs: true);
     videoUrl = VideoUtils.getCdnUrl(
       firstVideo.playUrls,
       preserveStreamUrls: data.preserveStreamUrls,
@@ -1337,7 +1339,7 @@ class VideoDetailController extends GetxController
             data.quality!,
             data.supportFormats,
           );
-          firstVideo = VideoItem(
+          _firstVideo = VideoItem(
             id: data.quality!,
             baseUrl: videoUrl,
             codecs: 'avc1',
@@ -1382,7 +1384,7 @@ class VideoDetailController extends GetxController
         response.supportFormats!,
         preferCodecs,
       );
-      firstVideo = targetVideo;
+      _firstVideo = targetVideo;
       currentDecodeFormats = targetDecode;
       currentVideoQa.value = VideoQuality.fromCode(targetQuality);
       _setVideoHeight();

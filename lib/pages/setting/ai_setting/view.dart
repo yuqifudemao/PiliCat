@@ -46,7 +46,7 @@ class AiSettingPage extends StatelessWidget {
           // 总开关
           Obx(() => SwitchListTile(
                 title: const Text('启用 AI 视频助手'),
-                subtitle: const Text('关闭后视频详情页不再显示 AI 按钮'),
+                subtitle: const Text('在视频详情页和横屏播放器中使用 AI 视频助手'),
                 value: controller.enableAiChat.value,
                 onChanged: (value) {
                   controller.enableAiChat.value = value;

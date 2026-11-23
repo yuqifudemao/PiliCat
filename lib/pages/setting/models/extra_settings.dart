@@ -236,7 +236,7 @@ List<SettingsModel> get extraSettings => [
   ),
   const SwitchModel(
     title: '启用AI总结',
-    subtitle: '视频详情页开启AI总结',
+    subtitle: '在视频详情页和横屏播放器中查看 B 站 AI 总结',
     leading: Icon(Icons.engineering_outlined),
     setKey: SettingBoxKey.enableAi,
     defaultVal: false,

@@ -1,4 +1,6 @@
 import 'package:PiliPlus/models/common/video/cdn_type.dart';
+import 'package:PiliPlus/models/video/play/url.dart';
+import 'package:PiliPlus/pages/setting/widgets/cdn_select_dialog.dart';
 import 'package:PiliPlus/utils/video_utils.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -15,6 +17,41 @@ void main() {
     VideoUtils.cdnService = CDNService.akamai;
     VideoUtils.disableAudioCDN = false;
     VideoUtils.customCDNUrl = null;
+  });
+
+  test('ordinary segmented MP4 tests a real segment of the current video', () async {
+    final video = PlayUrlModel()..durl = [
+      Durl(backupUrl: ['']),
+      Durl(url: cosov, backupUrl: [akamai]),
+      Durl(url: 'https://example.org/next-segment.mp4'),
+    ];
+    final urls = video.cdnTestUrls();
+    expect(urls, [cosov, akamai]);
+    expect(await CdnSpeedTester(sampleUrls: urls).getSampleUrls(), urls);
+    expect(await CdnSpeedTester(sampleUrls: []).getSampleUrls(), isEmpty);
+  });
+
+  test('ordinary DASH uses the selected quality and discards a previous video', () {
+    final video = PlayUrlModel.fromJson({
+      'dash': {
+        'video': [
+          {'id': 80, 'base_url': cosov},
+          {'id': 64, 'base_url': akamai},
+        ],
+      },
+    });
+    expect(video.cdnTestUrls(video.dash!.video!.last), [akamai]);
+    final next = PlayUrlModel.fromJson({
+      'dash': {'video': [{'id': 80, 'base_url': cosov}]},
+    });
+    expect(next.cdnTestUrls(video.dash!.video!.last), [cosov]);
+  });
+
+  test('a probe cannot attribute a fallback URL to a different mirror', () {
+    expect(VideoUtils.cdnTestUrl([cosov], CDNService.akamai), isNull);
+    expect(VideoUtils.cdnTestUrl([cosov, akamai], CDNService.akamai), akamai);
+    expect(VideoUtils.cdnTestUrl([], CDNService.baseUrl), isNull);
+    expect(VideoUtils.cdnTestUrl([cosov], CDNService.ali, preserveStreamUrls: true), isNull);
   });
 
   test('signed playback chooses a distinct backup and retains its signature', () {

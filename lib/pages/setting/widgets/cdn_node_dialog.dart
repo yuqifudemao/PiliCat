@@ -1,6 +1,7 @@
 import 'package:PiliPlus/common/widgets/flutter/popup_menu.dart';
 import 'package:PiliPlus/common/widgets/loading_widget/m3e_loading_indicator.dart';
-import 'package:PiliPlus/models/video/play/url.dart';
+import 'package:PiliPlus/http/media_http_profile.dart';
+import 'package:PiliPlus/models/common/video/cdn_type.dart';
 import 'package:PiliPlus/pages/setting/widgets/cdn_select_dialog.dart';
 import 'package:PiliPlus/utils/cdn_node_store.dart';
 import 'package:PiliPlus/utils/storage.dart';
@@ -13,11 +14,13 @@ import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 class CdnNodeDialog extends StatefulWidget {
   const CdnNodeDialog({
     super.key,
-    this.sample,
+    this.sampleUrls,
+    this.mediaHttpProfile = MediaHttpProfile.web,
     this.isLive = false,
   });
 
-  final BaseItem? sample;
+  final List<String>? sampleUrls;
+  final MediaHttpProfile mediaHttpProfile;
   final bool isLive;
 
   @override
@@ -75,10 +78,14 @@ class _CdnNodeDialogState extends State<CdnNodeDialog> {
     notifier.value = '';
     String result;
     try {
-      final tester = _tester ??= CdnSpeedTester(sample: widget.sample);
-      final sample = await tester.getSample();
-      final url = VideoUtils.getCdnUrl(sample.playUrls, customHost: host);
-      result = await tester.measure(url);
+      final tester = _tester ??= CdnSpeedTester(
+        sampleUrls: widget.sampleUrls,
+        mediaHttpProfile: widget.mediaHttpProfile,
+      );
+      final sample = await tester.getSampleUrls();
+      if (!mounted) return;
+      final url = VideoUtils.cdnTestUrl(sample, CDNService.baseUrl, customHost: host);
+      result = url == null ? '当前视频没有该节点的测速地址' : await tester.measure(url);
     } catch (e) {
       result = '测速失败';
     }
