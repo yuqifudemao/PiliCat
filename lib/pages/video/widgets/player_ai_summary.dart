@@ -1,6 +1,6 @@
 import 'package:PiliPlus/models_new/video/video_ai_conclusion/model_result.dart';
 import 'package:PiliPlus/pages/video/ai_conclusion/view.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// The player and the detail page share their assistant session and summary.
 class PlayerAiSummary extends StatefulWidget {

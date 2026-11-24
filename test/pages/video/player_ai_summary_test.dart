@@ -8,10 +8,10 @@ import 'package:PiliPlus/pages/ai_chat/view.dart';
 import 'package:PiliPlus/pages/video/widgets/player_ai_summary.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/storage.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:hive_ce/hive.dart';
+import 'package:material_ui/material_ui.dart';
 
 class _ExistingChat extends AiChatController {
   _ExistingChat() : super(heroTag: 'video');
@@ -74,7 +74,9 @@ void main() {
       expect(tester.takeException(), isNull);
       tester.view.resetViewInsets();
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('关闭总结'));
+      await tester.tap(find.byWidgetPredicate(
+        (w) => w is IconButton && w.tooltip == '关闭总结',
+      ));
       await tester.pumpAndSettle();
     }
   });
@@ -137,7 +139,9 @@ void main() {
     await select('AI 视频助手');
     await select('B 站 AI 总结');
     expect(requests, 1);
-    await tester.tap(find.byTooltip('关闭总结'));
+    await tester.tap(find.byWidgetPredicate(
+      (w) => w is IconButton && w.tooltip == '关闭总结',
+    ));
     await tester.pumpAndSettle();
     expect(find.byType(PlayerAiSummary), findsNothing);
     expect(find.text('AI'), findsOneWidget);

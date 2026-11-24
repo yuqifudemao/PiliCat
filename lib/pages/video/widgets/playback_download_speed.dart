@@ -4,8 +4,8 @@ import 'dart:io' show Platform;
 import 'package:PiliPlus/plugin/pl_player/controller.dart';
 import 'package:PiliPlus/utils/playback_rate_meter.dart';
 import 'package:PiliPlus/utils/utils.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MissingPluginException, PlatformException;
+import 'package:material_ui/material_ui.dart';
 
 class PlaybackDownloadSpeed extends StatefulWidget {
   const PlaybackDownloadSpeed({
