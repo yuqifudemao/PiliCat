@@ -29,6 +29,8 @@ import 'package:PiliPlus/models_new/video/video_play_info/data.dart';
 import 'package:PiliPlus/models_new/video/video_relation/data.dart';
 import 'package:PiliPlus/models_new/video/video_shot/data.dart';
 import 'package:PiliPlus/utils/accounts.dart';
+import 'package:PiliPlus/utils/accounts/account.dart' show NoAccount;
+import 'package:PiliPlus/utils/ai_caption_text.dart';
 import 'package:PiliPlus/utils/app_sign.dart';
 import 'package:PiliPlus/utils/extension/string_ext.dart';
 import 'package:PiliPlus/utils/global_data.dart';
@@ -954,13 +956,18 @@ abstract final class VideoHttp {
     required String bvid,
     required int cid,
     int? upMid,
+    CancelToken? cancelToken,
   }) async {
     final params = await WbiSign.makSign({
       'bvid': bvid,
       'cid': cid,
       'up_mid': ?upMid,
     });
-    final res = await Request().get(Api.aiConclusion, queryParameters: params);
+    final res = await Request().get(
+      Api.aiConclusion,
+      queryParameters: params,
+      cancelToken: cancelToken,
+    );
     final int? code = res.data['code'];
     if (code == 0) {
       final int? dataCode = res.data['data']?['code'];
@@ -1017,46 +1024,19 @@ abstract final class VideoHttp {
     return null;
   }
 
-  static final _fillerWords = RegExp(
-    r'(嗯+|啊+|额+|呃+|那个|就是说|然后呢|对吧|是吧|对不对|你知道吗|反正就是|基本上|说实话)',
-  );
-
-  /// Fetch raw subtitle body JSON list from URL.
   static Future<List?> fetchSubtitleBody(
     String subtitleUrl, {
     CancelToken? cancelToken,
   }) async {
-    final res = await Request().get("https:$subtitleUrl", cancelToken: cancelToken);
-    return res.data?['body'] as List?;
-  }
-
-  /// Preprocess subtitle body JSON for AI analysis.
-  /// Returns (compressed text, isTooLong).
-  static ({String text, bool isTooLong}) preprocessSubtitlesForAi(
-    List body,
-  ) {
-    final sb = StringBuffer();
-    // Check if any subtitle exceeds 1 hour to determine format
-    final hasHour = body.isNotEmpty && (body.last['from'] as num) >= 3600;
-    for (final item in body) {
-      final from = item['from'] as num;
-      final content = (item['content'] as String?)?.trim() ?? '';
-      if (content.isEmpty) continue;
-      final h = from ~/ 3600;
-      final m = (from % 3600) ~/ 60;
-      final s = (from % 60).toInt();
-      final ts = hasHour
-          ? '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}'
-          : '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
-      sb.writeln('[$ts] $content');
-    }
-
-    // Second level: remove filler words
-    var text = sb.toString().replaceAll(_fillerWords, '');
-    // Collapse multiple blank lines
-    text = text.replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
-
-    return (text: text, isTooLong: text.length > 20000);
+    final url = subtitleHttpUrl(subtitleUrl);
+    if (url == null) return null;
+    final res = await Request().get(
+      url,
+      cancelToken: cancelToken,
+      options: Options(extra: {'account': const NoAccount()}),
+    );
+    final data = res.data is String ? jsonDecode(res.data as String) : res.data;
+    return data is Map && data['body'] is List ? data['body'] as List : null;
   }
 
   static bool _canAddRank(Map i) {

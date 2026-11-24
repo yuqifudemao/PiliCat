@@ -39,6 +39,7 @@ import 'package:PiliPlus/models_new/sponsor_block/segment_item.dart';
 import 'package:PiliPlus/models_new/video/video_detail/data.dart';
 import 'package:PiliPlus/models_new/video/video_detail/episode.dart' as ugc;
 import 'package:PiliPlus/models_new/video/video_pbp/data.dart';
+import 'package:PiliPlus/models_new/video/video_play_info/data.dart';
 import 'package:PiliPlus/models_new/video/video_play_info/subtitle.dart';
 import 'package:PiliPlus/models_new/video/video_stein_edgeinfo/data.dart';
 import 'package:PiliPlus/pages/ai_chat/controller.dart';
@@ -1776,6 +1777,24 @@ class VideoDetailController extends GetxController
     return (_actualVideoType ?? videoType) != VideoType.ugc;
   }
 
+  ({String bvid, int cid, Future<LoadingState<PlayInfoData>> request})? _playInfoPending;
+
+  /// The player and AI panel may request the same episode while it is opening.
+  Future<LoadingState<PlayInfoData>> requestPlayInfo() async {
+    final id = cid.value;
+    final previous = _playInfoPending;
+    if (previous != null && previous.bvid == bvid && previous.cid == id) {
+      return previous.request;
+    }
+    final request = VideoHttp.playInfo(bvid: bvid, cid: id, seasonId: seasonId, epId: epId);
+    _playInfoPending = (bvid: bvid, cid: id, request: request);
+    try {
+      return await request;
+    } finally {
+      if (identical(_playInfoPending?.request, request)) _playInfoPending = null;
+    }
+  }
+
   Future<void> _queryPlayInfo() async {
     final requestedCid = cid.value;
     vttSubtitles.clear();
@@ -1786,19 +1805,12 @@ class VideoDetailController extends GetxController
     if (plPlayerController.showViewPoints) {
       viewPointList.clear();
     }
-    final res = await VideoHttp.playInfo(
-      bvid: bvid,
-      cid: cid.value,
-      seasonId: seasonId,
-      epId: epId,
-    );
+    if (isClosed || requestedCid != cid.value) return;
+    final res = await requestPlayInfo();
+    if (isClosed || requestedCid != cid.value) return;
     if (res case Success(:final response)) {
-      if (requestedCid == cid.value) {
-        final dmMask = response.dmMask;
-        danmakuMaskController.setSource(
-          dmMask?.cid == requestedCid ? dmMask : null,
-        );
-      }
+      final dmMask = response.dmMask;
+      danmakuMaskController.setSource(dmMask?.cid == requestedCid ? dmMask : null);
       if (response.lastPlayTime != null &&
           response.lastPlayTime! > 0 &&
           _canUseLastPlayTime(response.lastPlayCid)) {
@@ -1851,10 +1863,12 @@ class VideoDetailController extends GetxController
         } catch (_) {}
       }
 
+      if (isClosed || requestedCid != cid.value) return;
       if (response.subtitle?.subtitles case final sub? when (sub.isNotEmpty)) {
         _setSubtitle(sub);
       } else if (!Accounts.heartbeat.isLogin) {
-        final res = await DmGrpc.dmView(aid, cid.value);
+        final res = await DmGrpc.dmView(aid, requestedCid);
+        if (isClosed || requestedCid != cid.value) return;
         if (res case Success(:final response)) {
           if (DmGrpc.dmViewToSubtitle(response) case final sub?
               when (sub.isNotEmpty)) {

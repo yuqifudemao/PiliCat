@@ -11,10 +11,12 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : AudioServiceActivity() {
+    private var frameCaptions: FrameCaptionChannel? = null
     private lateinit var methodChannel: MethodChannel
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        frameCaptions = FrameCaptionChannel(flutterEngine.dartExecutor.binaryMessenger)
 
         methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "PiliNara")
         methodChannel.setMethodCallHandler { call, result ->
@@ -26,6 +28,12 @@ class MainActivity : AudioServiceActivity() {
                 else -> result.notImplemented()
             }
         }
+    }
+
+    override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        frameCaptions?.dispose()
+        frameCaptions = null
+        super.cleanUpFlutterEngine(flutterEngine)
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

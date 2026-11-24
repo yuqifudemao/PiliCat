@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:PiliPlus/utils/ai_caption_text.dart';
+
 import 'package:PiliPlus/models_new/video/video_ai_conclusion/model_result.dart';
 import 'package:PiliPlus/pages/ai_chat/controller.dart';
 import 'package:PiliPlus/pages/ai_chat/models.dart';
@@ -27,6 +29,22 @@ class _ExistingChat extends AiChatController {
 }
 
 void main() {
+  test('keeps absolute signed subtitle URLs and upgrades relative URLs', () {
+    expect(subtitleHttpUrl('https://example.com/s?k=a%2Fb'), 'https://example.com/s?k=a%2Fb');
+    expect(subtitleHttpUrl('//example.com/s'), 'https://example.com/s');
+    expect(subtitleHttpUrl(''), isNull);
+  });
+
+  test('reads platform transcription with timestamps and ignores empty cues', () {
+    final result = AiConclusionResult.fromJson({
+      'subtitle': [{'part_subtitle': [
+        {'content': '第一段', 'start_timestamp': 65},
+        {'content': ' '},
+      ]}],
+    });
+    expect(result.transcript, '[01:05] 第一段');
+  });
+
   late Directory directory;
   setUpAll(() async {
     directory = await Directory.systemTemp.createTemp('pilicat-player-chat-');

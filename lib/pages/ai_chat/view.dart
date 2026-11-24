@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:io';
 
 import 'package:PiliPlus/pages/ai_chat/controller.dart';
@@ -5,7 +6,9 @@ import 'package:PiliPlus/pages/ai_chat/models.dart';
 import 'package:PiliPlus/pages/common/slide/common_slide_page.dart';
 import 'package:PiliPlus/pages/video/controller.dart';
 import 'package:PiliPlus/services/ai_chat/ai_chat_service.dart';
+import 'package:PiliPlus/services/ai_chat/video_material.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
+import 'package:dio/dio.dart' show CancelToken;
 import 'package:PiliPlus/common/widgets/flutter/text_field/controller.dart';
 import 'package:PiliPlus/common/widgets/flutter/text_field/text_field.dart';
 import 'package:material_ui/material_ui.dart' hide TextField;
@@ -289,14 +292,44 @@ class _AiChatPageState extends State<AiChatPage>
 
   void _sendSelectedPrompt() {
     if (_templates.isEmpty) return;
-    if (!chatCtl.hasSubtitles) {
-      SmartDialog.showToast('当前视频无字幕，请「载入上下文」后直接提问');
-      return;
-    }
     if (_selectedPromptIndex >= 0 && _selectedPromptIndex < _templates.length) {
       final t = _templates[_selectedPromptIndex];
-      chatCtl.startAnalysis(t.prompt, templateName: t.name);
+      chatCtl.startAnalysis(t.prompt, templateName: t.name, chooseSource: _chooseCaptionSource);
     }
+  }
+
+  Future<MissingCaptionChoice?> _chooseCaptionSource(
+    bool canReadFrames, bool hasDescription, CancelToken token,
+  ) async {
+    if (!mounted || token.isCancelled) return null;
+    final navigator = Navigator.of(context, rootNavigator: true);
+    final route = DialogRoute<MissingCaptionChoice>(
+      context: context,
+      builder: (context) => AlertDialog(
+        scrollable: true,
+        title: const Text('未找到本集字幕或转写'),
+        content: Text(canReadFrames
+            ? '可以在手机上抽取视频画面，识别画面下半部的字幕。读取视频会使用流量，只有识别出的文字会发给当前 AI 模型。'
+            : '可以用视频标题与简介做简要概括。'),
+        actions: [
+          TextButton(onPressed: () => navigator.pop(), child: const Text('取消')),
+          if (hasDescription)
+            TextButton(
+              onPressed: () => navigator.pop(MissingCaptionChoice.description),
+              child: const Text('仅根据简介'),
+            ),
+          if (canReadFrames)
+            FilledButton(
+              onPressed: () => navigator.pop(MissingCaptionChoice.frames),
+              child: const Text('识别画面字幕'),
+            ),
+        ],
+      ),
+    );
+    unawaited(token.whenCancel.then((_) {
+      if (navigator.mounted && route.isActive) navigator.removeRoute(route);
+    }));
+    return navigator.push(route);
   }
 
   void _sendCustomPrompt() {
@@ -389,6 +422,14 @@ class _AiChatPageState extends State<AiChatPage>
                     _buildModelPicker(),
                     _buildPromptBar(theme),
                     Divider(height: 1, color: colorScheme.outlineVariant),
+                    Obx(() {
+                      final status = chatCtl.contextStatus.value;
+                      if (status.isEmpty) return const SizedBox.shrink();
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Text(status, style: theme.textTheme.bodySmall),
+                      );
+                    }),
                     Obx(() {
                       if (!chatCtl.subtitleWarning.value) {
                         return const SizedBox.shrink();
@@ -565,15 +606,14 @@ class _AiChatPageState extends State<AiChatPage>
           Obx(() {
             final requesting = chatCtl.isRequesting.value;
             final hasContext = chatCtl.hasVideoContext.value;
-            final hasSubs = chatCtl.hasSubtitles;
             return Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (!hasContext || !hasSubs)
+                if (!hasContext)
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: IconButton(
-                      onPressed: (requesting || hasContext) ? null : () => chatCtl.loadVideoContext(),
+                      onPressed: requesting ? null : () => chatCtl.loadVideoContext(chooseSource: _chooseCaptionSource),
                       icon: Icon(Icons.post_add, size: _isCompact ? 18 : 22),
                       tooltip: '载入上下文',
                     ),
@@ -614,9 +654,7 @@ class _AiChatPageState extends State<AiChatPage>
                 Text(
                   chatCtl.hasVideoContext.value
                       ? '视频上下文已载入，请输入你的问题'
-                      : chatCtl.hasSubtitles
-                          ? '选择提示词后点击「分析」或「载入上下文」'
-                          : '输入问题开始对话',
+                      : '点「分析」查找本集字幕或转写，也可以直接提问',
                   style: TextStyle(color: colorScheme.outline),
                 ),
               ],
@@ -637,7 +675,7 @@ class _AiChatPageState extends State<AiChatPage>
                itemCount: msgs.length,
                itemBuilder: (context, index) {
                  final msg = msgs[index];
-                 if (msg.isDivider) return _buildDivider(theme);
+                 if (msg.isDivider) return _buildDivider(theme, msg.content);
                  if (msg.role == 'user') {
                    final displayText = msg.templateName != null
                        ? '/${msg.templateName}'
@@ -664,7 +702,7 @@ class _AiChatPageState extends State<AiChatPage>
     });
   }
 
-  Widget _buildDivider(ThemeData theme) {
+  Widget _buildDivider(ThemeData theme, String source) {
     final colorScheme = theme.colorScheme;
     return Padding(
       padding: EdgeInsets.symmetric(vertical: _isCompact ? 8 : 12),
@@ -674,7 +712,7 @@ class _AiChatPageState extends State<AiChatPage>
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Text(
-              '已载入视频上下文',
+              source.isEmpty ? '已载入视频上下文' : '资料来源 · $source',
               style: TextStyle(
                 fontSize: 12,
                 color: colorScheme.outline,
