@@ -6,7 +6,9 @@ import 'package:PiliPlus/models_new/video/video_play_info/subtitle.dart';
 import 'package:PiliPlus/pages/ai_chat/models.dart';
 import 'package:PiliPlus/pages/video/controller.dart';
 import 'package:PiliPlus/services/ai_chat/ai_chat_service.dart';
+import 'package:PiliPlus/services/ai_chat/caption_frame_reader.dart';
 import 'package:PiliPlus/services/ai_chat/frame_captions.dart';
+import 'package:PiliPlus/services/playback_diagnostics.dart';
 import 'package:PiliPlus/services/ai_chat/video_material.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:dio/dio.dart';
@@ -47,7 +49,7 @@ class AiChatController extends GetxController {
       '而是主动调用通用知识补充解答，并在该段落前明确声明：'
       '『*视频中未提及此概念，为您补充相关背景知识：*』\n'
       '4. 根据标明的资料来源回答。画面字幕是抽样，仅涵盖识别到的文字。B 站摘要与提纲只涵盖所列要点。'
-      '若资料仅有标题与简介，在开头说明这一点，只概括简介。不要补写台词、未提到的结论或时间点。';
+      '若来源是当前片段，只总结该片段，在开头说明时间范围，不能据此推断整部视频。若资料仅有标题与简介，在开头说明这一点，只概括简介。不要补写台词、未提到的结论或时间点。';
 
   // --- Cached video context for system message injection ---
   String? _cachedVideoContext;
@@ -101,14 +103,18 @@ class AiChatController extends GetxController {
     ].join();
   }
 
-  Future<void> loadVideoContext({required ChooseCaptionSource chooseSource}) async {
+  Future<void> loadVideoContext({
+    required ChooseCaptionSource chooseSource,
+    required Future<bool> Function(CancelToken) confirmPlaying,
+  }) async {
     if (hasVideoContext.value) return;
-    await _runRequest(chooseSource: chooseSource, errorPrefix: '载入失败');
+    await _runRequest(chooseSource: chooseSource, confirmPlaying: confirmPlaying, errorPrefix: '载入失败');
   }
 
   Future<void> _loadVideoContext(
     CancelToken token,
     ChooseCaptionSource chooseSource,
+    Future<bool> Function(CancelToken) confirmPlaying,
   ) async {
     final video = _videoCtl;
     final bvid = video.bvid;
@@ -149,31 +155,67 @@ class AiChatController extends GetxController {
       final canRead = Platform.isAndroid && !video.isFileSource &&
           video.plPlayerController.isCurrentVideoSource(bvid: bvid, cid: cid);
       final clips = canRead
-          ? FrameCaptions.clips(video.data, video.videoUrl ?? '')
+          ? FrameCaptions.clips(video.data, video.plPlayerController.currentVideoStreamUrl ?? video.videoUrl ?? '')
           : const <CaptionClip>[];
-      if (clips.isEmpty && info.isEmpty) {
+      if (!canRead && info.isEmpty) {
         SmartDialog.showToast('本集暂无可读取的字幕、转写或简介');
         return;
       }
       contextStatus.value = '';
-      final choice = await chooseSource(clips.isNotEmpty, info.isNotEmpty, token);
+      final choice = await chooseSource(canRead, info.isNotEmpty, token);
       if (!current() || choice == null) return;
       if (choice == MissingCaptionChoice.frames) {
-        contextStatus.value = '正在打开视频画面…';
-        final text = await FrameCaptions.read(
-          clips: clips,
-          headers: video.data.mediaHttpProfile.headers,
-          token: token,
-          progress: (done, total) {
-            if (current()) contextStatus.value = '正在识别画面字幕 · $done/$total';
-          },
-        );
+        contextStatus.value = '正在抽取本集画面…';
+        String text;
+        var source = VideoMaterialSource.frames;
+        try {
+          text = await FrameCaptions.read(
+            clips: clips,
+            headers: video.data.mediaHttpProfile.headers,
+            token: token,
+            diagnostic: PlaybackDiagnostics.record,
+            progress: (done, total) {
+              if (current()) contextStatus.value = '正在识别画面字幕 · $done/$total';
+            },
+          );
+        } on CaptionFrameUnavailable catch (error) {
+          if (!current()) return;
+          PlaybackDiagnostics.record('整集抽帧不可用 · ${error.message}');
+          text = '';
+        }
         if (!current()) return;
         if (text.isEmpty) {
-          SmartDialog.showToast('未识别到足够的画面字幕。可再次点「分析」，选择仅根据简介。');
-          return;
+          contextStatus.value = '';
+          if (!await confirmPlaying(token) || !current()) return;
+          final controller = video.plPlayerController;
+          final player = controller.videoPlayerController;
+          bool samePlayer() => current() && identical(controller.videoPlayerController, player) &&
+              controller.isCurrentVideoSource(bvid: bvid, cid: cid);
+          if (player == null || !samePlayer()) return;
+          if (!player.state.playing) await controller.play(hideControls: false);
+          if (!samePlayer()) return;
+          contextStatus.value = '正在读取当前播放片段…';
+          source = VideoMaterialSource.playingFrames;
+          try {
+            text = await FrameCaptions.readPlaying(
+              capture: () => captureCaptionFrame(player),
+              position: () => samePlayer() && !player.state.completed
+                  ? player.state.position.inMilliseconds : null,
+              token: token,
+              progress: (seconds) {
+                if (current()) contextStatus.value = '正在识别当前播放片段 · $seconds/30 秒';
+              },
+            );
+          } on CaptionFrameUnavailable catch (error) {
+            throw FormatException(error.message);
+          }
+          if (!current()) return;
+          if (text.isEmpty) {
+            SmartDialog.showToast('当前片段未读到变化的字幕，请选一段有台词的画面再试。');
+            return;
+          }
         }
-        material = VideoMaterial(VideoMaterialSource.frames, text);
+        material = VideoMaterial(source, text);
       } else {
         material = VideoMaterial(VideoMaterialSource.description, info);
       }
@@ -191,10 +233,12 @@ class AiChatController extends GetxController {
     String templatePrompt, {
     String? templateName,
     required ChooseCaptionSource chooseSource,
+    required Future<bool> Function(CancelToken) confirmPlaying,
   }) => _runRequest(
     prompt: templatePrompt,
     templateName: templateName,
     chooseSource: chooseSource,
+    confirmPlaying: confirmPlaying,
     errorPrefix: '分析失败',
   );
 
@@ -211,6 +255,7 @@ class AiChatController extends GetxController {
     String? prompt,
     String? templateName,
     ChooseCaptionSource? chooseSource,
+    Future<bool> Function(CancelToken)? confirmPlaying,
     required String errorPrefix,
   }) async {
     if (_requestToken != null || isClosed) return;
@@ -221,8 +266,8 @@ class AiChatController extends GetxController {
     var removeEmpty = false;
 
     try {
-      if (chooseSource != null && !hasVideoContext.value) {
-        await _loadVideoContext(token, chooseSource);
+      if (chooseSource != null && confirmPlaying != null && !hasVideoContext.value) {
+        await _loadVideoContext(token, chooseSource, confirmPlaying);
         if (!_isCurrentRequest(token) || !hasVideoContext.value) return;
       }
       if (prompt == null || !_isCurrentRequest(token)) return;

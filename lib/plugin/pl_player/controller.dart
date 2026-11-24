@@ -185,6 +185,8 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
   late DataSource dataSource;
   Media? _lastBackupMedia;
+  String? _currentVideoStreamUrl;
+  String? get currentVideoStreamUrl => _currentVideoStreamUrl;
   int _backupSourceIndex = 0;
   Stopwatch? _startupTimer;
   Stopwatch? _bufferingTimer;
@@ -1071,6 +1073,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       this.width = width;
       this.height = height;
       this.dataSource = dataSource;
+      _currentVideoStreamUrl = dataSource.videoSource;
       _startupTimer = null;
       _bufferingTimer = null;
       _lastDiagnosticError = null;
@@ -1425,6 +1428,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       );
       _lastBackupMedia = nextMedia;
       await player.open(nextMedia, play: true);
+      if (identical(dataSource, failedSource)) _currentVideoStreamUrl = video;
     } catch (_) {
       if (identical(dataSource, failedSource)) {
         PlaybackDiagnostics.record('备用 CDN 打开失败');

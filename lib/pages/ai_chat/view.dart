@@ -294,38 +294,51 @@ class _AiChatPageState extends State<AiChatPage>
     if (_templates.isEmpty) return;
     if (_selectedPromptIndex >= 0 && _selectedPromptIndex < _templates.length) {
       final t = _templates[_selectedPromptIndex];
-      chatCtl.startAnalysis(t.prompt, templateName: t.name, chooseSource: _chooseCaptionSource);
+      chatCtl.startAnalysis(t.prompt, templateName: t.name, chooseSource: _chooseCaptionSource, confirmPlaying: _confirmPlayingCaptions);
     }
   }
 
   Future<MissingCaptionChoice?> _chooseCaptionSource(
     bool canReadFrames, bool hasDescription, CancelToken token,
   ) async {
-    if (!mounted || token.isCancelled) return null;
-    final navigator = Navigator.of(context, rootNavigator: true);
-    final route = DialogRoute<MissingCaptionChoice>(
-      context: context,
-      builder: (context) => AlertDialog(
+    return _captionDialog(token, (context) => AlertDialog(
         scrollable: true,
         title: const Text('未找到本集字幕或转写'),
         content: Text(canReadFrames
             ? '可以在手机上抽取视频画面，识别画面下半部的字幕。读取视频会使用流量，只有识别出的文字会发给当前 AI 模型。'
             : '可以用视频标题与简介做简要概括。'),
         actions: [
-          TextButton(onPressed: () => navigator.pop(), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
           if (hasDescription)
             TextButton(
-              onPressed: () => navigator.pop(MissingCaptionChoice.description),
+              onPressed: () => Navigator.pop(context, MissingCaptionChoice.description),
               child: const Text('仅根据简介'),
             ),
           if (canReadFrames)
             FilledButton(
-              onPressed: () => navigator.pop(MissingCaptionChoice.frames),
+              onPressed: () => Navigator.pop(context, MissingCaptionChoice.frames),
               child: const Text('识别画面字幕'),
             ),
         ],
       ),
     );
+  }
+
+  Future<bool> _confirmPlayingCaptions(CancelToken token) async =>
+      await _captionDialog<bool>(token, (context) => AlertDialog(
+        scrollable: true,
+        title: const Text('改为识别当前播放片段？'),
+        content: const Text('整集抽样没有取得可用字幕。可以继续播放约 30 秒，从实际播放的画面读取字幕，只总结这段内容。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('播放并识别')),
+        ],
+      )) ?? false;
+
+  Future<T?> _captionDialog<T>(CancelToken token, WidgetBuilder builder) async {
+    if (!mounted || token.isCancelled) return null;
+    final navigator = Navigator.of(context, rootNavigator: true);
+    final route = DialogRoute<T>(context: context, builder: builder);
     unawaited(token.whenCancel.then((_) {
       if (navigator.mounted && route.isActive) navigator.removeRoute(route);
     }));
@@ -613,7 +626,7 @@ class _AiChatPageState extends State<AiChatPage>
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: IconButton(
-                      onPressed: requesting ? null : () => chatCtl.loadVideoContext(chooseSource: _chooseCaptionSource),
+                      onPressed: requesting ? null : () => chatCtl.loadVideoContext(chooseSource: _chooseCaptionSource, confirmPlaying: _confirmPlayingCaptions),
                       icon: Icon(Icons.post_add, size: _isCompact ? 18 : 22),
                       tooltip: '载入上下文',
                     ),

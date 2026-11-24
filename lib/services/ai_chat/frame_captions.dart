@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:PiliPlus/models/video/play/url.dart';
+import 'package:PiliPlus/services/ai_chat/caption_frame_reader.dart';
 import 'package:PiliPlus/utils/ai_caption_text.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
@@ -33,10 +34,10 @@ abstract final class FrameCaptions {
         (v.height ?? 0) >= 360 && (v.height ?? 0) <= 720).toList()
       ..sort((a, b) => b.height!.compareTo(a.height!));
     final urls = candidates([
-      if (scanTracks.isNotEmpty) scanTracks.first.baseUrl,
       currentUrl,
-      ...data.cdnTestUrls(),
+      if (scanTracks.isNotEmpty) scanTracks.first.baseUrl,
       if (scanTracks.isNotEmpty) ...?scanTracks.first.backupUrl,
+      ...data.cdnTestUrls(),
     ]);
     return urls.isEmpty ? const [] : [(durationMs: data.timeLength ?? 0, urls: urls)];
   }
@@ -54,77 +55,142 @@ abstract final class FrameCaptions {
     required Map<String, String> headers,
     required CancelToken token,
     required void Function(int done, int total) progress,
+    void Function(String message)? diagnostic,
   }) async {
-    if (clips.isEmpty || token.isCancelled) return '';
+    if (clips.isEmpty) throw const CaptionFrameUnavailable('缺少本集可读取的视频地址');
+    token.throwIfCancelled();
     final id = ++_nextId;
-    bool finished = false;
-    Future<void> close() async {
-      try {
-        await _channel.invokeMethod<void>('close', {'id': id});
-      } on PlatformException {
-        // The Android activity may already have disposed the reader.
-      } on MissingPluginException {
-        // An engine that was detached has no remaining reader.
-      }
-    }
-    void check() {
-      if (token.isCancelled) throw token.cancelError!;
-    }
-    unawaited(token.whenCancel.then((_) async {
-      if (!finished) await close();
-    }));
-    final lines = <String>[];
-    final distinct = <String>{};
-    String previous = '';
-    int done = 0;
-    int offset = 0;
-    int total = clips.fold(0, (ms, clip) => ms + clip.durationMs);
+    CaptionFrameReader? reader;
+    final lines = _CaptionLines();
+    var total = clips.fold<int>(0, (ms, clip) => ms + clip.durationMs);
     var times = sampleTimes(total);
+    var offset = 0;
+    var done = 0;
+    await _channel.invokeMethod<void>('start', {'id': id});
     try {
+      reader = await CaptionFrameReader.create(headers, token);
       for (final clip in clips) {
-        check();
-        if (clips.length > 1 && !times.any((ms) => ms >= offset && ms < offset + clip.durationMs)) {
-          offset += clip.durationMs;
-          continue;
-        }
-        final duration = await _channel.invokeMethod<int>('open', {
-          'id': id, 'urls': clip.urls, 'headers': headers,
-        }).timeout(const Duration(seconds: 35));
-        check();
-        if (clips.length == 1) {
-          total = (duration ?? 0) > 0 ? duration! : clip.durationMs;
-          times = sampleTimes(total);
-        }
-        if (times.isEmpty) throw const FormatException('无法读取视频时长');
-        final end = clips.length == 1 ? total : offset + clip.durationMs;
-        progress(done, times.length);
-        for (final ms in times.where((ms) => ms >= offset && ms < end)) {
-          check();
-          final text = await _channel.invokeMethod<String>('frame', {
-            'id': id, 'ms': ms - offset,
-          }).timeout(const Duration(seconds: 20));
-          check();
-          final line = text?.trim() ?? '';
-          final key = line.replaceAll(RegExp(r'\s+'), '');
-          if (key.isNotEmpty && key != previous) {
-            lines.add(timedCaption(line, ms / 1000));
-            distinct.add(key);
-            previous = key;
+        final start = offset;
+        offset += clip.durationMs;
+        if (clips.length > 1 && !times.any((t) => t >= start && t < offset)) continue;
+        final sampled = <int>{};
+        CaptionFrameUnavailable? failure;
+        for (final url in clip.urls.take(3)) {
+          token.throwIfCancelled();
+          try {
+            final duration = await reader.open(url, clip.durationMs);
+            if (clips.length == 1) {
+              if (duration <= 0) throw const CaptionFrameUnavailable('视频未返回时长');
+              if (sampled.isEmpty) {
+                total = duration;
+                offset = duration;
+                times = sampleTimes(total);
+              }
+            }
+            progress(done, times.length);
+            for (final t in times.where((t) => t >= start && t < offset && !sampled.contains(t))) {
+              final frame = await reader.at(t - start);
+              token.throwIfCancelled();
+              final line = await _recognize(id, frame, token);
+              lines.add(t, line);
+              sampled.add(t);
+              progress(++done, times.length);
+            }
+            failure = null;
+            break;
+          } on CaptionFrameUnavailable catch (e) {
+            failure = e;
+            diagnostic?.call('字幕抽帧 · ${e.message}');
+          } on TimeoutException {
+            failure = const CaptionFrameUnavailable('解码器等待视频超时');
           }
-          progress(++done, times.length);
         }
-        offset = end;
+        if (failure != null) throw failure;
+        if (sampled.isEmpty) throw const CaptionFrameUnavailable('没有可用的视频帧');
       }
-    } on TimeoutException {
-      throw const FormatException('读取视频画面超时，请稍后重试');
-    } on PlatformException catch (e) {
-      throw FormatException(e.message ?? '手机无法读取这条视频的画面');
+      diagnostic?.call('字幕抽帧 · 已读取 $done 帧 · ${lines.distinct.length} 条不同文字');
+      return lines.text(total);
     } finally {
-      finished = true;
-      await close();
+      try {
+        await reader?.dispose();
+      } finally {
+        await _channel.invokeMethod<void>('close', {'id': id});
+      }
     }
-    // A single static watermark is not evidence of the spoken content.
-    if (total >= 15000 && distinct.length < 2) return '';
-    return lines.join('\n');
   }
+
+  /// Read a short excerpt using frames the foreground player actually displayed.
+  /// The caller owns playback; this method never seeks or starts it.
+  static Future<String> readPlaying({
+    required Future<CaptionFrame?> Function() capture,
+    required int? Function() position,
+    required CancelToken token,
+    required void Function(int seconds) progress,
+    Duration interval = const Duration(milliseconds: 500),
+    Duration limit = const Duration(seconds: 30),
+  }) async {
+    token.throwIfCancelled();
+    final id = ++_nextId;
+    final lines = _CaptionLines();
+    final elapsed = Stopwatch()..start();
+    int? last;
+    var frameCount = 0;
+    await _channel.invokeMethod<void>('start', {'id': id});
+    try {
+      while (elapsed.elapsed < limit) {
+        token.throwIfCancelled();
+        final now = position();
+        if (now == null) break;
+        if (last == null || (now - last).abs() >= 1000) {
+          final frame = await capture();
+          token.throwIfCancelled();
+          if (frame != null) {
+            final line = await _recognize(id, frame, token);
+            lines.add(frame.ms, line);
+            last = frame.ms;
+            frameCount++;
+          }
+        }
+        progress(elapsed.elapsed.inSeconds);
+        await Future<void>.delayed(interval);
+      }
+      if (frameCount == 0) throw const CaptionFrameUnavailable('当前播放器未能提供画面');
+      return lines.distinct.length >= 2 ? lines.text(0) : '';
+    } finally {
+      await _channel.invokeMethod<void>('close', {'id': id});
+    }
+  }
+
+  static Future<String> _recognize(int id, CaptionFrame frame, CancelToken token) async {
+    token.throwIfCancelled();
+    try {
+      final text = await _channel.invokeMethod<String>('recognize', {
+        'id': id, 'png': frame.png,
+      }).timeout(const Duration(seconds: 20));
+      token.throwIfCancelled();
+      return text ?? '';
+    } on PlatformException catch (e) {
+      throw FormatException(e.message ?? '手机文字识别失败');
+    } on TimeoutException {
+      throw const FormatException('手机文字识别超时');
+    }
+  }
+}
+
+class _CaptionLines {
+  final distinct = <String>{};
+  final lines = <String>[];
+  String previous = '';
+
+  void add(int ms, String text) {
+    final line = text.trim();
+    final key = line.replaceAll(RegExp(r'\s+'), '');
+    if (key.isEmpty || previous == key) return;
+    previous = key;
+    distinct.add(key);
+    lines.add(timedCaption(line, ms / 1000));
+  }
+
+  String text(int duration) => duration >= 15000 && distinct.length < 2
+      ? '' : lines.join('\n');
 }

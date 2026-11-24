@@ -8,6 +8,7 @@ enum VideoMaterialSource {
   transcript('B 站语音转写'),
   outline('B 站摘要与提纲'),
   frames('画面字幕（抽样识别）'),
+  playingFrames('当前片段画面字幕（约 30 秒）'),
   description('仅标题与简介');
 
   const VideoMaterialSource(this.label);

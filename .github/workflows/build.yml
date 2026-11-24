@@ -6,6 +6,9 @@ on:
       - codex/pilicat-roaming-layout-search
     paths:
       - 'lib/**'
+      - 'android/app/src/main/kotlin/com/example/pilinara/FrameCaptionChannel.kt'
+      - 'integration_test/frame_captions_test.dart'
+      - 'tool/test_frame_captions.sh'
       - 'test/**'
       - '.github/workflows/build.yml'
   # pull_request:
@@ -55,7 +58,65 @@ on:
         type: string
 
 jobs:
+  caption_ocr:
+    name: Android caption OCR
+    if: github.event_name == 'push' || github.event.inputs.build_android == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Check whether caption recognition changed
+        id: changes
+        env:
+          BASE: ${{ github.event.before }}
+        run: |
+          paths=(
+            android/app/src/main/kotlin/com/example/pilinara/FrameCaptionChannel.kt
+            lib/services/ai_chat/frame_captions.dart
+            lib/services/ai_chat/caption_frame_reader.dart
+            integration_test/frame_captions_test.dart
+            tool/test_frame_captions.sh
+            .github/workflows/build.yml
+          )
+          if [[ -z "$BASE" ]] || ! git diff --quiet "$BASE" HEAD -- "${paths[@]}"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-java@v5
+        if: steps.changes.outputs.run == 'true'
+        with:
+          distribution: zulu
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        if: steps.changes.outputs.run == 'true'
+        with:
+          channel: stable
+          flutter-version-file: pubspec.yaml
+          cache: true
+      - name: Prepare emulator and sample video tools
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          sudo chmod 666 /dev/kvm
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-noto-cjk
+      - name: Apply project Flutter patches
+        if: steps.changes.outputs.run == 'true'
+        shell: pwsh
+        run: lib/scripts/patch.ps1 android
+      - name: Test decoding and Chinese OCR on Android
+        if: steps.changes.outputs.run == 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: default
+          disable-animations: true
+          script: bash tool/test_frame_captions.sh
+
   android:
+    needs: caption_ocr
     if: ${{ (github.event_name == 'push' && github.repository == 'yuqifudemao/PiliCat') || (github.event_name == 'pull_request' && github.repository == 'Starfallan/PiliNara') || github.event.inputs.build_android == 'true' }}
     name: Release Android
     runs-on: ubuntu-latest
