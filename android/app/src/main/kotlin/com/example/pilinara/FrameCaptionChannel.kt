@@ -4,11 +4,9 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Handler
 import android.os.Looper
-import com.google.android.gms.tasks.Tasks
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.TextRecognizer
-import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
+import android.content.Context
+import com.googlecode.tesseract.android.TessBaseAPI
+import java.io.File
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -16,12 +14,12 @@ import java.util.concurrent.Executors
 
 /** Receives only the subtitle band of a decoded frame. Networking and seeking
  * are handled by the same mpv library as the foreground player. */
-internal class FrameCaptionChannel(messenger: BinaryMessenger) {
+internal class FrameCaptionChannel(private val context: Context, messenger: BinaryMessenger) {
     private val channel = MethodChannel(messenger, "PiliCat/frameCaptions")
     private val worker = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
     private var activeId: Long? = null // Main thread only.
-    private var recognizer: TextRecognizer? = null // Worker thread only.
+    private var recognizer: TessBaseAPI? = null // Worker thread only.
     private var attached = true
 
     init { channel.setMethodCallHandler(::handle) }
@@ -54,11 +52,10 @@ internal class FrameCaptionChannel(messenger: BinaryMessenger) {
                             return@execute
                         }
                         image = bitmap
-                        val reader = recognizer ?: TextRecognition.getClient(
-                            ChineseTextRecognizerOptions.Builder().build()
-                        ).also { recognizer = it }
-                        val text = Tasks.await(reader.process(InputImage.fromBitmap(bitmap, 0)))
-                            .textBlocks.flatMap { it.lines }.joinToString(" ") { it.text.trim() }.trim()
+                        val reader = recognizer ?: createReader().also { recognizer = it }
+                        reader.setImage(bitmap)
+                        val text = reader.getUTF8Text().orEmpty().trim()
+                        reader.clear()
                         main.post {
                             if (attached) {
                                 if (activeId == id) result.success(text)
@@ -76,8 +73,32 @@ internal class FrameCaptionChannel(messenger: BinaryMessenger) {
         }
     }
 
+    private fun createReader(): TessBaseAPI {
+        val root = File(context.filesDir, "caption-ocr-v1")
+        val model = File(root, "tessdata/chi_sim.traineddata")
+        if (!model.exists()) {
+            model.parentFile!!.mkdirs()
+            val tmp = File.createTempFile("model", ".tmp", model.parentFile)
+            try {
+                context.assets.open("chi_sim.traineddata").use { input ->
+                    tmp.outputStream().use { output -> input.copyTo(output) }
+                }
+                check(tmp.renameTo(model) || model.exists())
+            } finally {
+                tmp.delete()
+            }
+        }
+        val reader = TessBaseAPI()
+        if (!reader.init(root.absolutePath, "chi_sim")) {
+            reader.recycle()
+            error("OCR initialization failed")
+        }
+        reader.setPageSegMode(TessBaseAPI.PageSegMode.PSM_SPARSE_TEXT)
+        return reader
+    }
+
     private fun release() {
-        recognizer?.close()
+        recognizer?.recycle()
         recognizer = null
     }
 

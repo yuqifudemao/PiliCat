@@ -16,7 +16,7 @@ class MainActivity : AudioServiceActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        frameCaptions = FrameCaptionChannel(flutterEngine.dartExecutor.binaryMessenger)
+        frameCaptions = FrameCaptionChannel(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
 
         methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "PiliNara")
         methodChannel.setMethodCallHandler { call, result ->

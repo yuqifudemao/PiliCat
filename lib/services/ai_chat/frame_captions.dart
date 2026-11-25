@@ -170,6 +170,7 @@ abstract final class FrameCaptions {
       token.throwIfCancelled();
       return text ?? '';
     } on PlatformException catch (e) {
+      if (e.code == 'ocr' || e.code == 'image') return '';
       throw FormatException(e.message ?? '手机文字识别失败');
     } on TimeoutException {
       throw const FormatException('手机文字识别超时');
