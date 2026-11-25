@@ -51,8 +51,8 @@ class _AiChatPageState extends State<AiChatPage>
   /// 思考框限高档是否已消费本次滚轮事件
   bool _reasoningWheelConsumed = false;
 
-  /// 控制栏收起进度：0 完全展开，1 完全收起，由用户滚动位移驱动。
-  final _barCollapse = ValueNotifier<double>(0);
+  /// 顶部提示词栏的收起进度，从完全展开（0）到完全收起（1）。
+  final _promptBarCollapse = ValueNotifier<double>(0);
 
   /// 顶部提示词栏的布局 key：取它布局后的自然高度，用于把滚动量换算成
   /// 收起进度，并保证滚动补偿与实际布局位移一致。
@@ -98,20 +98,17 @@ class _AiChatPageState extends State<AiChatPage>
     chatCtl = Get.find<AiChatController>(tag: widget.heroTag);
     _templates = AiChatService.getTemplates();
     _scrollCtl.addListener(_onScroll);
-    _focusNode.addListener(_onFocusChanged);
   }
 
   @override
   void dispose() {
     // 请求由视频页持有的 controller 管理，关闭面板后继续接收结果。
     _inputCtl.dispose();
-    _focusNode
-      ..removeListener(_onFocusChanged)
-      ..dispose();
+    _focusNode.dispose();
     _scrollCtl
       ..removeListener(_onScroll)
       ..dispose();
-    _barCollapse.dispose();
+    _promptBarCollapse.dispose();
     super.dispose();
   }
 
@@ -132,18 +129,6 @@ class _AiChatPageState extends State<AiChatPage>
       if (position.maxScrollExtent - position.pixels <= 100) {
         setState(() => _isAtBottom = true);
       }
-    }
-  }
-
-  void _onFocusChanged() {
-    if (!_focusNode.hasFocus) return;
-    final value = _barCollapse.value;
-    if (value == 0) return;
-    final height = _promptBarHeight;
-    _barCollapse.value = 0;
-    // 控制栏弹回会把列表上边缘压下同样高度，补偿滚动位置避免消息跳动
-    if (_scrollCtl.hasClients) {
-      _scrollCtl.position.correctBy(value * height);
     }
   }
 
@@ -204,11 +189,11 @@ class _AiChatPageState extends State<AiChatPage>
   /// 按用户滚动的位移量收放控制栏，并补偿列表滚动位置。
   void _handleUserScroll(double scrollDelta) {
     final height = _promptBarHeight;
-    final value = _barCollapse.value;
+    final value = _promptBarCollapse.value;
     if (!_updateBarCollapse(scrollDelta, height)) return;
     // 顶栏收起会让列表上边缘上移同样高度，补偿滚动位置以保证内容跟手 1:1
     if (_scrollCtl.hasClients) {
-      _scrollCtl.position.correctBy((value - _barCollapse.value) * height);
+      _scrollCtl.position.correctBy((value - _promptBarCollapse.value) * height);
     }
   }
 
@@ -218,12 +203,12 @@ class _AiChatPageState extends State<AiChatPage>
   bool _updateBarCollapse(double scrollDelta, double height) {
     if (scrollDelta == 0 || height <= 0) return false;
     final next = clampDouble(
-      _barCollapse.value + scrollDelta / height,
+      _promptBarCollapse.value + scrollDelta / height,
       0.0,
       1.0,
     );
-    if (next == _barCollapse.value) return false;
-    _barCollapse.value = next;
+    if (next == _promptBarCollapse.value) return false;
+    _promptBarCollapse.value = next;
     return true;
   }
 
@@ -427,8 +412,13 @@ class _AiChatPageState extends State<AiChatPage>
               SizedBox(height: _isCompact ? 4 : 8),
             ],
             if (!typingInPlayer)
-              _collapsibleBar(
-                slideUp: true,
+              ValueListenableBuilder<double>(
+                valueListenable: _promptBarCollapse,
+                builder: (context, progress, child) => SizeTransition(
+                  sizeFactor: AlwaysStoppedAnimation(1.0 - progress),
+                  alignment: Alignment.bottomLeft,
+                  child: child,
+                ),
                 child: Column(
                   key: _promptBarKey,
                   children: [
@@ -467,41 +457,9 @@ class _AiChatPageState extends State<AiChatPage>
                 ),
               ),
             Expanded(child: enableSlide ? slideList() : buildList()),
-            Obx(
-              () => _collapsibleBar(
-                slideUp: false,
-                keepVisible: chatCtl.isRequesting.value,
-                child: _buildInputBar(theme),
-              ),
-            ),
+            _buildInputBar(theme),
           ],
         ),
-      ),
-    );
-  }
-
-  /// 让控制栏随 [_barCollapse] 连续平移收起与展开。
-  ///
-  /// [slideUp] 为 true（顶部提示词栏）时内容贴住容器下边缘向上平移滑出，
-  /// 与首页顶栏的 CustomHeightWidget（高度减少 + 向上平移）等价；
-  /// 为 false（底部输入栏）时内容贴住容器上边缘向下平移滑出，
-  /// 被裁掉的是输入栏底部的留白。两者都是平移加高度减少，
-  /// 高度减少腾出的空间由消息列表接管。
-  ///
-  /// 用 [SizeTransition] 而非 CustomHeightWidget：这里需要裁剪溢出内容，
-  /// 提示词栏上方还有标题栏，不裁剪会画到标题栏上。
-  Widget _collapsibleBar({
-    required bool slideUp,
-    required Widget child,
-    bool keepVisible = false,
-  }) {
-    return ValueListenableBuilder<double>(
-      valueListenable: _barCollapse,
-      child: child,
-      builder: (context, progress, child) => SizeTransition(
-        sizeFactor: AlwaysStoppedAnimation(keepVisible ? 1.0 : 1 - progress),
-        alignment: slideUp ? Alignment.bottomLeft : Alignment.topLeft,
-        child: child,
       ),
     );
   }

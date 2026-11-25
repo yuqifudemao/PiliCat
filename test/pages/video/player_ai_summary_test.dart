@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:PiliPlus/utils/ai_caption_text.dart';
-
+import 'package:PiliPlus/common/widgets/flutter/text_field/text_field.dart' show RichTextField;
 import 'package:PiliPlus/models_new/video/video_ai_conclusion/model_result.dart';
 import 'package:PiliPlus/pages/ai_chat/controller.dart';
 import 'package:PiliPlus/pages/ai_chat/models.dart';
 import 'package:PiliPlus/pages/ai_chat/view.dart';
 import 'package:PiliPlus/pages/video/widgets/player_ai_summary.dart';
+import 'package:PiliPlus/utils/ai_caption_text.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,6 +17,13 @@ import 'package:material_ui/material_ui.dart';
 
 class _ExistingChat extends AiChatController {
   _ExistingChat() : super(heroTag: 'video');
+
+  String? lastFollowUp;
+
+  @override
+  Future<void> sendFollowUp(String text) async {
+    lastFollowUp = text;
+  }
 
   @override
   void onInit() {}
@@ -55,6 +62,84 @@ void main() {
     await Hive.close();
     await directory.delete(recursive: true);
   });
+
+  for (final inPlayer in [false, true]) {
+    final panel = inPlayer ? 'landscape player' : 'portrait detail';
+    testWidgets('can send directly from the end of a long chat in the $panel',
+        (tester) async {
+      final size = inPlayer ? const Size(800, 400) : const Size(400, 800);
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = size;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetViewInsets);
+
+      final chat = _ExistingChat();
+      Get.put<AiChatController>(chat, tag: chat.heroTag);
+      addTearDown(() => Get.delete<AiChatController>(tag: chat.heroTag));
+      chat.messages.addAll(List.generate(
+        24,
+        (i) => ChatMessage(role: 'user', content: '之前的问题 $i'),
+      ));
+      final page = AiChatPage(heroTag: chat.heroTag, inPlayer: inPlayer);
+      await tester.pumpWidget(GetMaterialApp(
+        home: Align(
+          alignment: Alignment.bottomRight,
+          child: SizedBox(
+            width: 400,
+            height: inPlayer ? 400 : 575,
+            child: inPlayer
+                ? PlayerAiSummary(assistant: page, onSeek: (_) {})
+                : page,
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      final list = find.byType(ListView);
+      final position = tester.widget<ListView>(list).controller!.position;
+      final input = find.byType(RichTextField);
+      final inputRect = tester.getRect(input);
+      final send = find.byWidgetPredicate(
+        (w) => w is IconButton && w.tooltip == '发送',
+      );
+      expect(position.maxScrollExtent, greaterThan(0));
+
+      for (var i = 0; i < 15 && position.extentAfter > 1; i++) {
+        await tester.drag(list, const Offset(0, -180));
+        await tester.pumpAndSettle();
+      }
+      // Continue dragging at the boundary, then finish generation without scrolling back.
+      await tester.drag(list, const Offset(0, -120));
+      await tester.pumpAndSettle();
+      expect(position.extentAfter, lessThanOrEqualTo(1));
+      expect(input.hitTestable(), findsOneWidget);
+      expect(tester.getRect(input), inputRect);
+      expect(tester.getBottomLeft(list).dy, lessThanOrEqualTo(inputRect.top));
+      chat.isRequesting.value = true;
+      await tester.pump();
+      final stop = find.byWidgetPredicate(
+        (w) => w is IconButton && w.tooltip == '停止生成',
+      );
+      expect(stop.hitTestable(), findsOneWidget);
+      chat.isRequesting.value = false;
+      await tester.pump();
+      expect(send.hitTestable(), findsOneWidget);
+
+      await tester.tap(input);
+      await tester.pump();
+      tester.view.viewInsets = const FakeViewPadding(bottom: 215);
+      await tester.pump();
+      expect(tester.getBottomLeft(input).dy, lessThanOrEqualTo(size.height - 215));
+      tester.testTextInput.enterText('能再解释一下最后一点吗？');
+      await tester.pump();
+      await tester.tap(send);
+      expect(chat.lastFollowUp, '能再解释一下最后一点吗？');
+      tester.view.resetViewInsets();
+      await tester.pump();
+      expect(tester.getRect(input), inputRect);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('the landscape assistant reopens the current model and conversation',
       (tester) async {
