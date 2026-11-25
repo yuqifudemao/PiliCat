@@ -123,7 +123,7 @@ class _AboutPageState extends State<AboutPage> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  '基于PiliPlus做了一些自用修改',
+                  '鱼欺负的猫的 B 站客户端，基于 PiliNara 和 PiliPlus 开发',
                   style: TextStyle(color: outline),
                   semanticsLabel: '与你一起，发现不一样的世界',
                 ),
