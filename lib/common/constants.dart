@@ -1,5 +1,5 @@
 abstract final class Constants {
-  static const appName = 'PiliNara';
+  static const appName = 'PiliCat';
   static const sourceCodeUrl = 'https://github.com/Starfallan/PiliNara';
   static const upstreamCodeUrl = 'https://github.com/bggRGjQaUbCoE/PiliPlus';
     

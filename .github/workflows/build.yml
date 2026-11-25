@@ -219,7 +219,7 @@ jobs:
         run: |
           for file in build/app/outputs/flutter-apk/app-*-release.apk; do
             abi=$(echo "$file" | sed -E 's|.*app-(.*)-release\.apk|\1|')
-            mv "$file" "PiliNara_android_${{ env.version }}_${abi}.apk"
+            mv "$file" "PiliCat_android_${{ env.version }}_${abi}.apk"
           done
 
       - name: Sign and verify Android release APKs
@@ -240,7 +240,7 @@ jobs:
             echo "::error::The stored signing key does not match the pinned certificate"
             exit 1
           fi
-          for apk in PiliNara_android_*.apk; do
+          for apk in PiliCat_android_*.apk; do
             "$apksigner" sign --ks android/app/key.jks --ks-type PKCS12 \
               --ks-key-alias "$KEY_ALIAS" --ks-pass env:KEYSTORE_PASSWORD \
               --key-pass env:KEY_PASSWORD --out "$apk.signed" "$apk"
@@ -263,11 +263,11 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.event.inputs.tag || format('v2.2.0-roaming.{0}', github.run_number) }}
-          name: ${{ github.event.inputs.tag || format('PiliCat roaming fix {0}', github.run_number) }}
-          prerelease: ${{ github.event_name == 'push' }}
-          make_latest: ${{ github.event_name == 'push' && 'false' || 'true' }}
+          name: ${{ github.event.inputs.tag || format('PiliCat 2.2.0（构建 {0}）', github.run_number) }}
+          prerelease: false
+          make_latest: 'true'
           target_commitish: ${{ github.sha }}
-          files: PiliNara_android_*_arm64-v8a.apk
+          files: PiliCat_android_*_arm64-v8a.apk
           fail_on_unmatched_files: true
 
       - name: Upload arm64-v8a
@@ -275,7 +275,7 @@ jobs:
         with:
           archive: false
           name: Android_arm64-v8a
-          path: PiliNara_android_*_arm64-v8a.apk
+          path: PiliCat_android_*_arm64-v8a.apk
 
   ios:
     if: ${{ (github.event_name == 'pull_request' && github.repository == 'Starfallan/PiliNara') || github.event.inputs.build_ios == 'true' }}
