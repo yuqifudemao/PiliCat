@@ -74,6 +74,7 @@ jobs:
           BASE: ${{ github.event.before }}
         run: |
           paths=(
+            android/app/build.gradle.kts
             android/app/src/main/kotlin/com/example/pilinara/FrameCaptionChannel.kt
             lib/services/ai_chat/frame_captions.dart
             lib/services/ai_chat/caption_frame_reader.dart

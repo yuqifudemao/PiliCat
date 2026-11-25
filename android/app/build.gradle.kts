@@ -122,5 +122,5 @@ val prepareCaptionModel by tasks.registering {
         target.writeBytes(bytes)
     }
 }
-android.sourceSets.getByName("main").assets.srcDir(captionAssets)
+android.sourceSets.getByName("main").assets.srcDir(captionAssets.get().asFile)
 tasks.named("preBuild").configure { dependsOn(prepareCaptionModel) }
