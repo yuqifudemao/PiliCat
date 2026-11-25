@@ -255,7 +255,7 @@ flutter_launcher_icons:
   image_path: assets/images/logo/pilicat_launcher.png
   image_path_android: assets/images/logo/pilicat_launcher.png
   image_path_ios: assets/images/logo/pilicat_launcher.png
-  adaptive_icon_background: "#281A22"
+  adaptive_icon_background: "#361A13"
   adaptive_icon_foreground: assets/images/logo/pilicat_foreground.png
   adaptive_icon_monochrome: assets/images/logo/pilicat_foreground.png
   macos:
