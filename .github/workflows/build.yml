@@ -6,6 +6,10 @@ on:
       - codex/pilicat-roaming-layout-search
     paths:
       - 'lib/**'
+      - 'assets/images/logo/**'
+      - 'android/app/src/main/res/**'
+      - 'android/app/src/main/ic_launcher-playstore.png'
+      - 'pubspec.yaml'
       - 'android/app/src/main/kotlin/com/example/pilinara/FrameCaptionChannel.kt'
       - 'integration_test/frame_captions_test.dart'
       - 'tool/test_frame_captions.sh'
