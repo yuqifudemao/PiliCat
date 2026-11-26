@@ -281,12 +281,37 @@ jobs:
           done
           git push origin "HEAD:refs/tags/$TAG"
 
+      - name: Prepare release notes
+        if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.tag != '') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || format('v2.2.0-roaming.{0}', github.run_number) }}
+        run: |
+          previous=''
+          tags=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name')
+          while IFS= read -r candidate; do
+            if [[ -n "$candidate" && "$candidate" != "$TAG" ]] &&
+               git merge-base --is-ancestor "refs/tags/$candidate" HEAD 2>/dev/null; then
+              previous=$candidate
+              break
+            fi
+          done <<< "$tags"
+          range=HEAD
+          if [[ -n "$previous" ]]; then range="refs/tags/$previous..HEAD"; fi
+          {
+            echo '## 本次更新'
+            echo
+            git log --no-merges --format='- %s' "$range" | awk '!seen[$0]++'
+          } > "$RUNNER_TEMP/pilicat-release-notes.md"
+
       - name: Release
         if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.tag != '') }}
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.event.inputs.tag || format('v2.2.0-roaming.{0}', github.run_number) }}
           name: ${{ github.event.inputs.tag || format('PiliCat 2.2.0（构建 {0}）', github.run_number) }}
+          body_path: ${{ runner.temp }}/pilicat-release-notes.md
           prerelease: false
           make_latest: 'true'
           target_commitish: ${{ github.sha }}
