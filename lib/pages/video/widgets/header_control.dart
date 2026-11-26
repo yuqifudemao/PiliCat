@@ -34,6 +34,7 @@ import 'package:PiliPlus/pages/video/introduction/ugc/widgets/action_item.dart';
 import 'package:PiliPlus/pages/video/introduction/ugc/widgets/menu_row.dart';
 import 'package:PiliPlus/pages/video/widgets/header_mixin.dart';
 import 'package:PiliPlus/pages/video/widgets/player_ai_summary.dart';
+import 'package:PiliPlus/pages/video/widgets/companion_panel.dart';
 import 'package:PiliPlus/plugin/pl_player/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/models/data_source.dart';
 import 'package:PiliPlus/plugin/pl_player/models/play_repeat.dart';
@@ -444,6 +445,8 @@ class HeaderControlState extends State<HeaderControl>
 
   /// 设置面板
   void showSettingSheet() {
+    final anchor = plPlayerController.positionInMilliseconds;
+    final anchorCid = videoDetailCtr.cid.value;
     showBottomSheet(
       (context, setState) {
         final theme = Theme.of(context);
@@ -457,6 +460,26 @@ class HeaderControlState extends State<HeaderControl>
             child: ListView(
               padding: const EdgeInsets.symmetric(vertical: 14),
               children: [
+                if (Platform.isAndroid && videoDetailCtr.cid.value > 0)
+                  ListTile(
+                    dense: true,
+                    leading: const Icon(Icons.headphones, size: 20),
+                    title: const Text('伴看轨', style: titleStyle),
+                    onTap: () {
+                      Get.back();
+                      final session = videoDetailCtr.openCompanion();
+                      final pages = introController.videoDetail.value.pages;
+                      final page = pages?.indexWhere((e) => e.cid == session.cid) ?? -1;
+                      final source = videoDetailCtr.epId != null
+                          ? 'https://www.bilibili.com/bangumi/play/ep${videoDetailCtr.epId}'
+                          : 'https://www.bilibili.com/video/${videoDetailCtr.bvid}/?p=${page < 0 ? 1 : page + 1}';
+                      showBottomSheet((_, _) => Obx(() => videoDetailCtr.cid.value == session.cid
+                          ? CompanionPanel(session: session, player: plPlayerController,
+                              anchor: anchorCid == session.cid ? anchor : plPlayerController.positionInMilliseconds,
+                              source: source)
+                          : const Center(child: Text('已切换分集，请重新打开伴看轨'))));
+                    },
+                  ),
                 ListTile(
                   dense: true,
                   onTap: () {

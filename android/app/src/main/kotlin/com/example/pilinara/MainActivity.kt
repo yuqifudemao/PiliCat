@@ -11,11 +11,13 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : AudioServiceActivity() {
+    private var companionAudio: CompanionAudioChannel? = null
     private var frameCaptions: FrameCaptionChannel? = null
     private lateinit var methodChannel: MethodChannel
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        companionAudio = CompanionAudioChannel(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
         frameCaptions = FrameCaptionChannel(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
 
         methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "PiliNara")
@@ -31,9 +33,16 @@ class MainActivity : AudioServiceActivity() {
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        companionAudio?.dispose()
+        companionAudio = null
         frameCaptions?.dispose()
         frameCaptions = null
         super.cleanUpFlutterEngine(flutterEngine)
+    }
+
+    override fun onStop() {
+        companionAudio?.stopAll()
+        super.onStop()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

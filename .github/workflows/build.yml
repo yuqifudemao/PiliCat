@@ -11,6 +11,9 @@ on:
       - 'android/app/src/main/ic_launcher-playstore.png'
       - 'pubspec.yaml'
       - 'android/app/src/main/kotlin/com/example/pilinara/FrameCaptionChannel.kt'
+      - 'android/app/src/main/kotlin/com/example/pilinara/CompanionAudioChannel.kt'
+      - 'integration_test/companion_track_test.dart'
+      - 'tool/test_companion_audio.sh'
       - 'integration_test/frame_captions_test.dart'
       - 'tool/test_frame_captions.sh'
       - 'test/**'
@@ -80,6 +83,12 @@ jobs:
           paths=(
             android/app/build.gradle.kts
             android/app/src/main/kotlin/com/example/pilinara/FrameCaptionChannel.kt
+            android/app/src/main/kotlin/com/example/pilinara/CompanionAudioChannel.kt
+            android/app/src/main/kotlin/com/example/pilinara/MainActivity.kt
+            lib/services/companion_session.dart
+            lib/services/companion_track.dart
+            integration_test/companion_track_test.dart
+            tool/test_companion_audio.sh
             lib/services/ai_chat/frame_captions.dart
             lib/services/ai_chat/caption_frame_reader.dart
             integration_test/frame_captions_test.dart
@@ -118,7 +127,9 @@ jobs:
           arch: x86_64
           target: default
           disable-animations: true
-          script: bash tool/test_frame_captions.sh
+          script: |
+            bash tool/test_frame_captions.sh
+            bash tool/test_companion_audio.sh
 
   android:
     needs: caption_ocr
@@ -172,6 +183,7 @@ jobs:
           test/utils/roaming_playback_policy_test.dart
           test/utils/playback_rate_meter_test.dart
           test/pages/video/player_ai_summary_test.dart
+          test/services/companion_track_test.dart
 
       - name: Load persistent Android signing key
         if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'

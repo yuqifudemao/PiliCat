@@ -650,6 +650,11 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
     )) {
       return;
     }
+    if (_isPageOwner && isShowing && plPlayerController.visible &&
+        plPlayerController.playerStatus.isPlaying) {
+      videoDetailController.companion.value?.tick(position.inMilliseconds,
+          plPlayerController.seekRevision, plPlayerController.playbackSpeed);
+    }
     videoDetailController.playedTime = position;
     videoDetailController.danmakuMaskController.updatePosition(position);
   }
@@ -667,6 +672,7 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
         ctr.showDanmaku = true;
       }
     } else if (state == .paused) {
+      videoDetailController.companion.value?.interrupt();
       introController.cancelTimer();
       ctr.showDanmaku = false;
     }
@@ -691,6 +697,7 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
   // 播放器状态监听
   Future<void> playerListener(PlayerStatus status) async {
     final isPlaying = status.isPlaying;
+    if (!isPlaying && _isPageOwner) videoDetailController.companion.value?.interrupt();
     try {
       if (videoDetailController.scrollCtr.hasClients) {
         if (isPlaying) {
@@ -882,6 +889,7 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
   // 离开当前页面时
   void didPushNext() {
     super.didPushNext();
+    if (_isPageOwner) videoDetailController.companion.value?.interrupt();
     isShowing = false;
 
     removeObserverMobile(this);

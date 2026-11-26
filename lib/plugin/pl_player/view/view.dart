@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:PiliPlus/pages/video/widgets/companion_panel.dart';
 import 'package:PiliPlus/common/assets.dart';
 import 'package:PiliPlus/common/constants.dart';
 import 'package:PiliPlus/common/style.dart';
@@ -2443,6 +2444,16 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
                   )
                 : const SizedBox.shrink();
           }),
+        if (widget.videoDetailController case final detail? when !isLive && !widget.isPipMode && !widget.isInAppPip)
+          Positioned(
+            top: 48, right: 12,
+            child: Obx(() {
+              final session = detail.companion.value;
+              return session == null || plPlayerController.controlsLock.value
+                  ? const SizedBox.shrink()
+                  : CompanionMarker(session);
+            }),
+          ),
       ],
     );
     if (PlatformUtils.isDesktop) {

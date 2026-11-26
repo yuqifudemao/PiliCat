@@ -99,6 +99,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   final RxBool isSeeking = false.obs;
 
   final RxInt position = RxInt(0);
+  int seekRevision = 0;
   final RxInt seekPosition = RxInt(0);
   int get progress => isSeeking.value ? seekPosition.value : position.value;
 
@@ -1733,6 +1734,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   Future<void> seekTo(Duration position) async {
     if (_playerCount == 0) return;
 
+    seekRevision++;
     _heartDuration = position.inSeconds;
 
     danmakuController?.clear();

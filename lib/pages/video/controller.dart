@@ -83,6 +83,8 @@ import 'package:PiliPlus/utils/subtitle_utils.dart';
 import 'package:PiliPlus/utils/theme_utils.dart';
 import 'package:PiliPlus/utils/utils.dart';
 import 'package:PiliPlus/services/playback_diagnostics.dart';
+import 'package:PiliPlus/services/companion_session.dart';
+import 'package:PiliPlus/services/companion_track.dart';
 import 'package:PiliPlus/utils/video_utils.dart';
 import 'package:collection/collection.dart';
 import 'package:dio/dio.dart' show Options;
@@ -101,6 +103,45 @@ typedef SubtitleData = ({bool isData, String id});
 
 class VideoDetailController extends GetxController
     with GetTickerProviderStateMixin, BlockMixin {
+  final companion = Rxn<CompanionSession>();
+  Worker? _companionEpisode;
+
+  CompanionSession openCompanion() {
+    _companionEpisode ??= ever<int>(cid, (_) {
+      final old = companion.value;
+      companion.value = null;
+      old?.dispose();
+    });
+    final active = companion.value;
+    if (active != null && active.cid == cid.value) return active;
+    final session = CompanionSession(cid.value);
+    companion.value = session;
+    unawaited(_prepareCompanionDialogue(session));
+    return session;
+  }
+
+  Future<void> _prepareCompanionDialogue(CompanionSession session) async {
+    if (subtitles.isEmpty) return;
+    final selected = vttSubtitlesIndex.value;
+    final uri = await _resolveVttUri(selected > 0 ? selected - 1 : 0);
+    if (session.closed || session.cid != cid.value || uri == null) return;
+    try {
+      final String text;
+      if (uri.startsWith('memory://')) {
+        text = uri.substring(9);
+      } else {
+        final file = File(uri);
+        if (await file.length() > 2 * 1024 * 1024) return;
+        text = await file.readAsString();
+      }
+      if (!session.closed) session.setDialogue(dialogueFromVtt(text));
+    } on FileSystemException {
+      // This video can still use its original timestamps.
+    } on FormatException {
+      // A non-text subtitle file cannot supply dialogue intervals.
+    }
+  }
+
   /// 路由传参
   late final Map args;
   late String bvid;
@@ -1948,6 +1989,9 @@ class VideoDetailController extends GetxController
     if (plPlayerController.isCurrentVideoSource(bvid: bvid, cid: cid.value)) {
       plPlayerController.pause();
     }
+    _companionEpisode?.dispose();
+    companion.value?.dispose();
+    companion.close();
     cancelBlockListener();
     _dmTrendTaskId++;
     cid.close();
