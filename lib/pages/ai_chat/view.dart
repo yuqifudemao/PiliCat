@@ -1,4 +1,4 @@
-import 'dart:async' show unawaited;
+import 'dart:async' show StreamSubscription, unawaited;
 import 'dart:io';
 
 import 'package:PiliPlus/pages/ai_chat/controller.dart';
@@ -8,6 +8,8 @@ import 'package:PiliPlus/pages/video/controller.dart';
 import 'package:PiliPlus/services/ai_chat/ai_chat_service.dart';
 import 'package:PiliPlus/services/ai_chat/video_material.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
+import 'package:PiliPlus/services/ai_chat/voice.dart';
+import 'package:PiliPlus/utils/permission_handler.dart';
 import 'package:dio/dio.dart' show CancelToken;
 import 'package:PiliPlus/common/widgets/flutter/text_field/controller.dart';
 import 'package:PiliPlus/common/widgets/flutter/text_field/text_field.dart';
@@ -35,7 +37,7 @@ class AiChatPage extends CommonSlidePage {
 }
 
 class _AiChatPageState extends State<AiChatPage>
-    with SingleTickerProviderStateMixin, CommonSlideMixin {
+    with SingleTickerProviderStateMixin, CommonSlideMixin, WidgetsBindingObserver {
   late final AiChatController chatCtl;
   final _inputCtl = RichTextEditingController();
   final _focusNode = FocusNode(onKeyEvent: _handleKeyEvent);
@@ -95,6 +97,7 @@ class _AiChatPageState extends State<AiChatPage>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     chatCtl = Get.find<AiChatController>(tag: widget.heroTag);
     chatCtl.openPanel();
     _templates = AiChatService.getTemplates();
@@ -104,6 +107,8 @@ class _AiChatPageState extends State<AiChatPage>
   @override
   void dispose() {
     // 请求由视频页持有的 controller 管理，关闭面板后继续接收结果。
+    WidgetsBinding.instance.removeObserver(this);
+    _stopVoice(redraw: false);
     _inputCtl.dispose();
     _focusNode.dispose();
     _scrollCtl
@@ -329,6 +334,82 @@ class _AiChatPageState extends State<AiChatPage>
       if (navigator.mounted && route.isActive) navigator.removeRoute(route);
     }));
     return navigator.push(route);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      _stopVoice();
+    }
+  }
+
+  Object? _voiceOwner;
+  String _voiceStatus = '';
+  bool _voiceRequest = false;
+  ChatMessage? _reading;
+  StreamSubscription<int>? _voiceParts;
+
+  void _stopVoice({bool redraw = true}) {
+    final owner = _voiceOwner;
+    if (owner == null) return;
+    _voiceOwner = null;
+    _reading = null;
+    _voiceStatus = '';
+    _voiceParts?.cancel();
+    _voiceParts = null;
+    if (_voiceRequest) chatCtl.cancelRequest();
+    _voiceRequest = false;
+    unawaited(AssistantVoice.shared.release(owner).catchError((_) {}));
+    if (redraw && mounted) setState(() {});
+  }
+
+  Future<void> _voice([ChatMessage? message]) async {
+    if (_voiceOwner != null) { _stopVoice(); return; }
+    if (chatCtl.isRequesting.value) return;
+    final owner = Object();
+    final voice = AssistantVoice.shared;
+    if (!voice.claim(owner)) return;
+    _voiceOwner = owner;
+    bool active() => mounted && identical(_voiceOwner, owner);
+    try {
+      final video = Get.find<VideoDetailController>(tag: widget.heroTag);
+      _voiceParts = video.cid.listen((_) => _stopVoice());
+      if (message == null && !(await Permission.microphone.request()).isGranted) {
+        throw StateError('请允许麦克风权限后再开始语音对话');
+      }
+      if (!active()) return;
+      await video.plPlayerController.pause();
+      if (!active()) return;
+      if (message != null) {
+        setState(() => _reading = message);
+        await voice.read(owner, message.content);
+        return;
+      }
+      while (active()) {
+        setState(() => _voiceStatus = '正在听，点击结束');
+        final question = await voice.listen(owner);
+        if (!active() || question.isEmpty) break;
+        setState(() => _voiceStatus = '正在回答，点击结束');
+        _voiceRequest = true;
+        if (!chatCtl.hasVideoContext.value && chatCtl.messages.isEmpty) {
+          await chatCtl.loadVideoContext(chooseSource: _chooseCaptionSource, confirmPlaying: _confirmPlayingCaptions);
+        }
+        if (!active()) return;
+        final seconds = video.plPlayerController.progress;
+        final before = chatCtl.messages.length;
+        await chatCtl.sendFollowUp('当前播放位置 [${(seconds ~/ 60).toString().padLeft(2, '0')}:${(seconds % 60).toString().padLeft(2, '0')}]。$question');
+        if (!active()) return;
+        _voiceRequest = false;
+        final reply = chatCtl.messages.lastOrNull;
+        if (chatCtl.messages.length <= before || reply == null || reply.role != 'assistant' || reply.content.trim().isEmpty) break;
+        setState(() => _voiceStatus = '正在朗读，点击结束');
+        await voice.read(owner, reply.content);
+      }
+    } catch (error) {
+      if (active()) SmartDialog.showToast('语音提示 · $error');
+    } finally {
+      if (active()) _stopVoice();
+    }
   }
 
   void _sendCustomPrompt() {
@@ -942,6 +1023,12 @@ class _AiChatPageState extends State<AiChatPage>
               ],
             ),
           ),
+          if (Platform.isAndroid && !msg.isStreaming && msg.content.isNotEmpty)
+            IconButton(
+              tooltip: identical(_reading, msg) ? '停止朗读' : '朗读回答',
+              onPressed: () => _voice(msg),
+              icon: Icon(identical(_reading, msg) ? Icons.stop : Icons.volume_up_outlined),
+            ),
           // Copy button at bottom-right of bubble, after streaming ends
           if (!msg.isStreaming && msg.content.isNotEmpty)
             Padding(
@@ -1000,6 +1087,12 @@ class _AiChatPageState extends State<AiChatPage>
       ),
       child: Row(
         children: [
+          if (Platform.isAndroid)
+            IconButton(
+              tooltip: _voiceStatus.isEmpty ? '开始语音对话' : _voiceStatus,
+              icon: Icon(_voiceOwner == null ? Icons.mic_none : Icons.stop_circle_outlined),
+              onPressed: () => _voice(),
+            ),
           Expanded(
             child: RichTextField(
               controller: _inputCtl,
@@ -1009,7 +1102,7 @@ class _AiChatPageState extends State<AiChatPage>
               keyboardType: TextInputType.multiline,
               textInputAction: TextInputAction.newline,
               decoration: InputDecoration(
-                hintText: '输入问题继续对话...',
+                hintText: _voiceStatus.isEmpty ? '输入问题继续对话...' : _voiceStatus,
                 hintStyle: TextStyle(color: colorScheme.outline),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(24),
