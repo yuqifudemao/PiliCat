@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
+import 'package:dio/dio.dart' as dio;
+import 'package:PiliPlus/services/ai_chat/cloud_voice.dart';
 
 import 'package:PiliPlus/http/video.dart';
 import 'package:PiliPlus/pages/ai_chat/controller.dart';
@@ -43,8 +46,38 @@ class _Assistant extends AiChatController {
 
 class _LoopbackHttp extends HttpOverrides {}
 
+class _VoiceAdapter implements dio.HttpClientAdapter {
+  @override
+  Future<dio.ResponseBody> fetch(dio.RequestOptions options, Stream<Uint8List>? stream,
+      Future<void>? cancelFuture) async {
+    expect(options.headers['Authorization'], 'Bearer private-key');
+    if (options.uri.path == '/v1/audio/transcriptions') {
+      final form = options.data as dio.FormData;
+      expect(Map.fromEntries(form.fields)['model'], 'whisper-1');
+      expect(form.files.single.value.filename, 'question.m4a');
+      return dio.ResponseBody.fromString('{"text":"刚才讲了什么"}', 200,
+          headers: {'content-type': ['application/json']});
+    }
+    expect(options.uri.path, '/v1/audio/speech');
+    expect(options.data['voice'], 'coral');
+    expect(options.data['instructions'], isNotEmpty);
+    return dio.ResponseBody.fromBytes([1, 2, 3], 200,
+        headers: {'content-type': ['audio/mpeg']});
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('voice uses the selected provider for transcription and expressive speech', () async {
+    final api = CloudVoice({...profile, 'url': 'https://example.test/v1/'}, adapter: _VoiceAdapter());
+    addTearDown(api.close);
+    expect(await api.transcribe(Uint8List.fromList([1]), 'whisper-1'), '刚才讲了什么');
+    expect(await api.synthesize('你好', 'gpt-4o-mini-tts', 'coral'), [1, 2, 3]);
+    expect(CloudVoice.passages('**你好** [01:02]').single, '你好');
+  });
   late Directory dir;
   setUpAll(() async {
     dir = await Directory.systemTemp.createTemp('pilicat-summary-');

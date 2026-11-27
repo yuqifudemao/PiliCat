@@ -9,8 +9,9 @@ import 'package:PiliPlus/services/ai_chat/ai_chat_service.dart';
 import 'package:PiliPlus/services/ai_chat/video_material.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:PiliPlus/services/ai_chat/voice.dart';
+import 'package:PiliPlus/pages/setting/ai_setting/voice_settings.dart';
 import 'package:PiliPlus/utils/permission_handler.dart';
-import 'package:dio/dio.dart' show CancelToken;
+import 'package:dio/dio.dart' show CancelToken, DioException;
 import 'package:PiliPlus/common/widgets/flutter/text_field/controller.dart';
 import 'package:PiliPlus/common/widgets/flutter/text_field/text_field.dart';
 import 'package:material_ui/material_ui.dart' hide TextField;
@@ -364,7 +365,14 @@ class _AiChatPageState extends State<AiChatPage>
   }
 
   Future<void> _voice([ChatMessage? message]) async {
-    if (_voiceOwner != null) { _stopVoice(); return; }
+    if (_voiceOwner != null) {
+      if (message == null && AssistantVoice.shared.recording) {
+        AssistantVoice.shared.sendRecording();
+      } else {
+        _stopVoice();
+      }
+      return;
+    }
     if (chatCtl.isRequesting.value) return;
     final owner = Object();
     final voice = AssistantVoice.shared;
@@ -380,14 +388,36 @@ class _AiChatPageState extends State<AiChatPage>
       if (!active()) return;
       await video.plPlayerController.pause();
       if (!active()) return;
+      var options = VoiceOptions();
+      final profile = chatCtl.currentProfile;
+      Future<void> read(String text) => options.narration
+          ? voice.narrate(owner, profile, options.tts, options.voice, text)
+          : voice.read(owner, text);
       if (message != null) {
         setState(() => _reading = message);
-        await voice.read(owner, message.content);
+        await read(message.content);
         return;
       }
       while (active()) {
         setState(() => _voiceStatus = '正在听，点击结束');
-        final question = await voice.listen(owner);
+        final String question;
+        if (options.transcription) {
+          question = await voice.recordQuestion(owner, profile, options.stt,
+            onRecording: () { if (active()) setState(() => _voiceStatus = '录音中，点麦克风发送'); },
+            onTranscribing: () { if (active()) setState(() => _voiceStatus = '正在转写，点击结束'); },
+          );
+        } else {
+          try {
+            question = await voice.listen(owner);
+          } on SystemSpeechUnavailable {
+            if (!active()) return;
+            final saved = await showVoiceOptions(context, recognitionFailed: true);
+            if (!active() || saved != true) return;
+            options = VoiceOptions();
+            if (options.transcription) continue;
+            return;
+          }
+        }
         if (!active() || question.isEmpty) break;
         setState(() => _voiceStatus = '正在回答，点击结束');
         _voiceRequest = true;
@@ -403,8 +433,12 @@ class _AiChatPageState extends State<AiChatPage>
         final reply = chatCtl.messages.lastOrNull;
         if (chatCtl.messages.length <= before || reply == null || reply.role != 'assistant' || reply.content.trim().isEmpty) break;
         setState(() => _voiceStatus = '正在朗读，点击结束');
-        await voice.read(owner, reply.content);
+        await read(reply.content);
       }
+    } on DioException catch (error) {
+      final status = error.response?.statusCode;
+      if (active()) SmartDialog.showToast(status == null ? '语音接口连接失败，请检查网络和 API 地址'
+          : '语音接口返回 HTTP $status，请检查当前 API 的权限、语音模型和音色');
     } catch (error) {
       if (active()) SmartDialog.showToast('语音提示 · $error');
     } finally {
@@ -1087,10 +1121,12 @@ class _AiChatPageState extends State<AiChatPage>
       ),
       child: Row(
         children: [
+          if (Platform.isAndroid && _voiceOwner != null && AssistantVoice.shared.recording)
+            IconButton(tooltip: '取消录音', onPressed: _stopVoice, icon: const Icon(Icons.close)),
           if (Platform.isAndroid)
             IconButton(
               tooltip: _voiceStatus.isEmpty ? '开始语音对话' : _voiceStatus,
-              icon: Icon(_voiceOwner == null ? Icons.mic_none : Icons.stop_circle_outlined),
+              icon: Icon(_voiceOwner == null ? Icons.mic_none : AssistantVoice.shared.recording ? Icons.send : Icons.stop_circle_outlined),
               onPressed: () => _voice(),
             ),
           Expanded(

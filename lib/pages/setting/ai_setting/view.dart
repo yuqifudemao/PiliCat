@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+import 'package:PiliPlus/pages/setting/ai_setting/voice_settings.dart';
 import 'package:PiliPlus/common/widgets/flutter/popup_menu.dart';
 import 'package:PiliPlus/pages/setting/ai_setting/controller.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
@@ -54,6 +56,9 @@ class AiSettingPage extends StatelessWidget {
                 },
               )),
           const SizedBox(height: 16),
+
+          if (Platform.isAndroid) ListTile(title: const Text('AI 语音设置'),
+            subtitle: const Text('语音转写、AI 朗读与音色'), onTap: () => showVoiceOptions(context)),
 
           // API 配置
           Card(

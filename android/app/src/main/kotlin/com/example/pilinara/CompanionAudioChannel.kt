@@ -60,12 +60,13 @@ class CompanionAudioChannel(private val context: Context, messenger: BinaryMesse
                         if (owner == recordingOwner) cancelRecording()
                         reply.success(null)
                     }
-                    "play" -> {
+                    "play", "playSpeech" -> {
+                        val speech = call.method == "playSpeech"
                         val data = requireNotNull(call.argument<ByteArray>("audio"))
-                        require(data.size in 1..1048576) { "语音文件过大" }
+                        require(data.size in 1..(if (speech) 8388608 else 1048576)) { "语音文件过大" }
                         check(recordingOwner == null) { "正在录音" }
                         stopPlayback()
-                        startPlayback(owner, data, reply)
+                        startPlayback(owner, data, reply, if (speech) 300000 else 31000)
                     }
                     "stop" -> {
                         if (owner == playingOwner) stopPlayback()
@@ -122,7 +123,7 @@ class CompanionAudioChannel(private val context: Context, messenger: BinaryMesse
         recordingOwner = null
     }
 
-    private fun startPlayback(owner: String, bytes: ByteArray, reply: MethodChannel.Result) {
+    private fun startPlayback(owner: String, bytes: ByteArray, reply: MethodChannel.Result, maxDuration: Int) {
         val file = File.createTempFile("companion-play-", ".m4a", context.cacheDir)
         val media = MediaPlayer()
         try {
@@ -130,7 +131,7 @@ class CompanionAudioChannel(private val context: Context, messenger: BinaryMesse
             file.inputStream().use { media.setDataSource(it.fd) }
             media.setOnPreparedListener {
                 if (media === player) {
-                    if (media.duration in 1..31000) media.start() else stopPlayback("无效的语音时长")
+                    if (media.duration in 1..maxDuration) media.start() else stopPlayback("无效的语音时长")
                 }
             }
             media.setOnCompletionListener { if (media === player) stopPlayback() }
