@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:PiliPlus/services/ai_chat/cloud_voice.dart';
 import 'package:uuid/uuid.dart';
+import 'package:PiliPlus/utils/permission_handler.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
@@ -29,7 +30,11 @@ class AssistantVoice {
   }
 
   Future<String> listen(Object owner) async {
-    final ready = await _speech.initialize(onError: (error) {
+    final bluetooth = await Permission.bluetoothConnect.status;
+    if (_owner != owner) return '';
+    final ready = await _speech.initialize(
+      options: [if (!bluetooth.isGranted) SpeechToText.androidNoBluetooth],
+      onError: (error) {
       final turn = _turn;
       if (turn != null && !turn.isCompleted) {
         turn.completeError(error.errorMsg == 'error_permission'

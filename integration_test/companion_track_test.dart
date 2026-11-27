@@ -33,6 +33,12 @@ void main() {
             {'owner': receiver.owner, 'audio': saved.cues.single.bytes})
             .timeout(const Duration(seconds: 8));
         expect(started.elapsedMilliseconds, greaterThan(200));
+        final mp3 = base64Decode(const String.fromEnvironment('VOICE_TEST_MP3'));
+        expect(mp3, isNotEmpty);
+        final speechTime = Stopwatch()..start();
+        await CompanionSession.audio.invokeMethod<void>('playSpeech',
+            {'owner': receiver.owner, 'audio': mp3}).timeout(const Duration(seconds: 8));
+        expect(speechTime.elapsedMilliseconds, greaterThan(200));
         receiver.select(key, saved, 1000);
         receiver.setEnabled(true, 1000);
         receiver.setDialogue([(start: 0, end: 15000)]);

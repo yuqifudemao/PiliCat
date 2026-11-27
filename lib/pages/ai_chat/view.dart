@@ -382,8 +382,25 @@ class _AiChatPageState extends State<AiChatPage>
     try {
       final video = Get.find<VideoDetailController>(tag: widget.heroTag);
       _voiceParts = video.cid.listen((_) => _stopVoice());
-      if (message == null && !(await Permission.microphone.request()).isGranted) {
-        throw StateError('请允许麦克风权限后再开始语音对话');
+      if (message == null) {
+        final mic = await Permission.microphone.request();
+        if (!active()) return;
+        if (!mic.isGranted) {
+          if (mic.isPermanentlyDenied) {
+            final settings = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
+              title: const Text('需要麦克风权限'),
+              content: const Text('请在 PiliCat 的应用权限中允许使用麦克风，再回来点麦克风开始。'),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+                FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('打开应用设置')),
+              ],
+            ));
+            if (settings == true && active()) await openAppSettings();
+          } else {
+            SmartDialog.showToast('请允许 PiliCat 在使用期间访问麦克风');
+          }
+          return;
+        }
       }
       if (!active()) return;
       await video.plPlayerController.pause();
