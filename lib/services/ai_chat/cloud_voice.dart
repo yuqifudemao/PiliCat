@@ -2,21 +2,31 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 
-/// Uses the same OpenAI-compatible base URL and credential selected for this chat.
+/// Sends audio requests to the OpenAI-compatible service chosen for the operation.
 class CloudVoice {
+  static bool validBaseUrl(String value) {
+    final uri = Uri.tryParse(value.trim());
+    return uri != null && uri.scheme == 'https' && uri.host.isNotEmpty &&
+        !uri.hasQuery && !uri.hasFragment;
+  }
+
+  static String _baseUrl(Map<String, String> profile) {
+    final base = (profile['url'] ?? '').trim().replaceFirst(RegExp(r'/+$'), '');
+    if (!validBaseUrl(base)) {
+      throw const FormatException('请在「语音模型」中选择有效的 HTTPS 接口基础地址');
+    }
+    return base;
+  }
+
   CloudVoice(Map<String, String> profile, {HttpClientAdapter? adapter})
       : _client = Dio(BaseOptions(
-          baseUrl: (profile['url'] ?? '').trim().replaceFirst(RegExp(r'/+$'), ''),
+          baseUrl: _baseUrl(profile),
           headers: {if ((profile['key'] ?? '').isNotEmpty) 'Authorization': 'Bearer ${profile['key']}'},
           followRedirects: false,
           connectTimeout: const Duration(seconds: 15),
           receiveTimeout: const Duration(seconds: 60),
         )) {
     if (adapter != null) _client.httpClientAdapter = adapter;
-    final uri = Uri.tryParse(_client.options.baseUrl);
-    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
-      throw const FormatException('请在 AI 设置中选择支持语音接口的 HTTPS 配置');
-    }
   }
 
   final Dio _client;

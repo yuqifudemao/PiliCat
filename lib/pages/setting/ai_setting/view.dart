@@ -58,7 +58,10 @@ class AiSettingPage extends StatelessWidget {
           const SizedBox(height: 16),
 
           if (Platform.isAndroid) ListTile(title: const Text('AI 语音设置'),
-            subtitle: const Text('语音转写、AI 朗读与音色'), onTap: () => showVoiceOptions(context)),
+            subtitle: const Text('转写模型、朗读模型与音色'), onTap: () async {
+              await showVoiceOptions(context);
+              if (!controller.isClosed) controller.profiles.assignAll(Pref.aiApiProfiles);
+            }),
 
           // API 配置
           Card(

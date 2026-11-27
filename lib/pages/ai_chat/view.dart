@@ -11,6 +11,7 @@ import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:PiliPlus/services/ai_chat/voice.dart';
 import 'package:PiliPlus/services/playback_diagnostics.dart';
 import 'package:PiliPlus/pages/setting/ai_setting/voice_settings.dart';
+import 'package:PiliPlus/pages/setting/ai_setting/voice_model_dialog.dart';
 import 'package:PiliPlus/utils/permission_handler.dart';
 import 'package:dio/dio.dart' show CancelToken, DioException;
 import 'package:PiliPlus/common/widgets/flutter/text_field/controller.dart';
@@ -423,7 +424,7 @@ class _AiChatPageState extends State<AiChatPage>
       Future<void> read(String text) {
         stage = options.narration ? 'AI 朗读' : '系统朗读';
         return options.narration
-            ? voice.narrate(owner, chatCtl.currentProfile, options.tts, options.voice, text)
+            ? voice.narrate(owner, options.tts.resolve(chatCtl.currentProfile), options.tts.model, options.voice, text)
             : voice.read(owner, text);
       }
       if (message != null) {
@@ -435,7 +436,7 @@ class _AiChatPageState extends State<AiChatPage>
         final String question;
         if (options.transcription) {
           stage = '麦克风录音';
-          question = await voice.recordQuestion(owner, chatCtl.currentProfile, options.stt,
+          question = await voice.recordQuestion(owner, options.stt.resolve(chatCtl.currentProfile), options.stt.model,
             onRecording: () { if (active()) setState(() => _voiceStatus = '录音中，点麦克风发送'); },
             onTranscribing: () {
               stage = '录音转写';
@@ -449,7 +450,7 @@ class _AiChatPageState extends State<AiChatPage>
           } on SystemSpeechUnavailable catch (error, stack) {
             if (!active()) return;
             _logVoiceFailure(stage, error.reason, stack);
-            final choice = await showVoiceOptions(context, recognitionFailed: true);
+            final choice = await showVoiceOptions(context, currentProfile: chatCtl.currentProfile, recognitionFailed: true);
             if (!active()) return;
             if (choice == VoiceSettingsAction.keyboard) {
               _focusNode.requestFocus();
@@ -488,8 +489,30 @@ class _AiChatPageState extends State<AiChatPage>
       final status = error.response?.statusCode;
       if (active()) {
         _logVoiceFailure(stage, status == null ? error.type.name : 'HTTP $status', stack);
-        SmartDialog.showToast(status == null ? '${stage}连接失败，请检查网络和 API 地址'
-            : '${stage}接口返回 HTTP $status，请确认当前服务支持所选语音模型');
+        final purpose = switch (stage) {
+          '录音转写' => VoicePurpose.transcription,
+          'AI 朗读' => VoicePurpose.narration,
+          _ => null,
+        };
+        if (status == 404 && purpose != null) {
+          final options = VoiceOptions();
+          final forInput = purpose == VoicePurpose.transcription;
+          final changed = await pickVoiceModel(context, current: chatCtl.currentProfile,
+              choice: forInput ? options.stt : options.tts, notFound: true);
+          if (active() && changed != null) {
+            final latest = VoiceOptions();
+            if (forInput) {
+              latest.stt = changed;
+            } else {
+              latest.tts = changed;
+            }
+            await latest.save();
+            if (active()) SmartDialog.showToast(forInput ? '已保存转写模型，请再次点麦克风提问' : '已保存朗读模型，请再次点朗读');
+          }
+        } else {
+          SmartDialog.showToast(status == null ? '${stage}连接失败，请检查网络和 API 地址'
+              : '${stage}接口返回 HTTP $status，请在「语音模型」核对服务和模型 ID');
+        }
       }
     } catch (error, stack) {
       if (active()) {
@@ -690,12 +713,18 @@ class _AiChatPageState extends State<AiChatPage>
               child: Align(
                 alignment: AlignmentDirectional.centerStart,
                 child: TextButton.icon(
-                  onPressed: chatCtl.isRequesting.value ? null : _selectModel,
+                  onPressed: chatCtl.isRequesting.value || _voiceOwner != null ? null : _selectModel,
                   icon: const Icon(Icons.smart_toy_outlined, size: 18),
                   label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
                 ),
               ),
             ),
+            if (Platform.isAndroid)
+              TextButton.icon(
+                onPressed: _voiceOwner == null ? () => showVoiceOptions(context, currentProfile: chatCtl.currentProfile) : null,
+                icon: const Icon(Icons.record_voice_over_outlined, size: 18),
+                label: const Text('语音模型'),
+              ),
             if (widget.inPlayer && chatCtl.messages.isNotEmpty)
               IconButton(
                 tooltip: '清除本集对话和已保存的总结',

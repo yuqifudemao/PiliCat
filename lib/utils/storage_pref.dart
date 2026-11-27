@@ -52,6 +52,7 @@ import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:uuid/uuid.dart';
 
 /// 关键词过滤规则列表的匹配入口，语义等价于逐项独立匹配、命中任一。
 extension RegExpListMatch on List<RegExp> {
@@ -1767,12 +1768,23 @@ abstract final class Pref {
   static List<Map<String, String>> get aiApiProfiles {
     final state = _aiApiProfileState;
     if (state != null) {
-      return (state['profiles'] as List)
-          .map((profile) => Map<String, String>.from(profile as Map))
-          .toList();
+      final profiles = (state['profiles'] as List)
+          .map((profile) => Map<String, String>.from(profile as Map)).toList();
+      final ids = <String>{};
+      for (final (index, profile) in profiles.indexed) {
+        final id = profile['id'];
+        if (id != null && id.isNotEmpty && ids.add(id)) continue;
+        var legacy = 'legacy-$index';
+        while (!ids.add(legacy)) {
+          legacy = '_$legacy';
+        }
+        profile['id'] = legacy;
+      }
+      return profiles;
     }
     return [
       {
+        'id': 'legacy-0',
         'name': '默认配置',
         'url': _setting.get(SettingBoxKey.aiApiUrl, defaultValue: ''),
         'key': _setting.get(SettingBoxKey.aiApiKey, defaultValue: ''),
@@ -1787,8 +1799,11 @@ abstract final class Pref {
 
   static int get activeAiApiProfile => _aiApiProfileState?['active'] as int? ?? 0;
 
-  static void saveAiApiProfiles(List<Map<String, String>> profiles, int active) {
-    _setting.put(
+  static Map<String, String> newAiApiProfile(String name, {String url = '', String key = ''}) =>
+      {'id': const Uuid().v4(), 'name': name, 'url': url, 'key': key};
+
+  static Future<void> saveAiApiProfiles(List<Map<String, String>> profiles, int active) {
+    return _setting.put(
       SettingBoxKey.aiApiProfiles,
       jsonEncode({'profiles': profiles, 'active': active}),
     );

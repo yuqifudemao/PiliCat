@@ -4,6 +4,9 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:dio/dio.dart' as dio;
 import 'package:PiliPlus/services/ai_chat/cloud_voice.dart';
+import 'package:PiliPlus/services/ai_chat/voice_options.dart';
+import 'package:PiliPlus/pages/setting/ai_setting/voice_model_dialog.dart';
+import 'package:PiliPlus/utils/storage_pref.dart';
 
 import 'package:PiliPlus/http/video.dart';
 import 'package:PiliPlus/pages/ai_chat/controller.dart';
@@ -89,6 +92,72 @@ void main() {
   tearDownAll(() async {
     await Hive.close();
     await dir.delete(recursive: true);
+  });
+
+  test('legacy voice models follow chat; pinned voice profiles survive renaming and reordering', () async {
+    addTearDown(() => GStorage.setting.clear());
+    await GStorage.setting.put('aiVoiceOptions', {
+      'transcription': true, 'narration': true, 'stt': 'old-in', 'tts': 'old-out', 'voice': 'old-voice',
+    });
+    await Pref.saveAiApiProfiles([
+      {'name': '总结', ...profile},
+      {'name': '语音', 'url': 'https://other.test/v1', 'key': 'old-secret'},
+    ], 0);
+    final profiles = Pref.aiApiProfiles;
+    final old = VoiceOptions();
+    expect(old.stt.resolve(profile), profile);
+    expect([old.stt.model, old.tts.model, old.voice], ['old-in', 'old-out', 'old-voice']);
+    old.stt.profileId = profiles.last['id']!;
+    old.stt.model = 'record-zh';
+    await old.save();
+    await Pref.saveAiApiProfiles([{...profiles.last, 'name': '改名', 'key': 'new-secret'}, profiles.first], 1);
+    final saved = VoiceOptions();
+    expect(saved.stt.resolve(profile)['key'], 'new-secret');
+    expect(saved.stt.model, 'record-zh');
+    expect(saved.tts.resolve(profile), profile);
+    expect(saved.tts.model, 'old-out');
+    expect(Pref.aiApiProfiles[Pref.activeAiApiProfile]['model'], profile['model']);
+    expect(jsonEncode(GStorage.setting.get('aiVoiceOptions')), isNot(contains('secret')));
+    await Pref.saveAiApiProfiles([profiles.first], 0);
+    expect(() => saved.stt.resolve(profile), throwsStateError);
+    saved.stt.profileId = '';
+    expect(saved.stt.model, 'old-in');
+  });
+
+  testWidgets('voice picker accepts a listed model and a manual ID after a failed list request', (tester) async {
+    VoiceModelChoice? result;
+    var calls = 0;
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: Builder(builder: (context) =>
+      TextButton(child: const Text('编辑'), onPressed: () async {
+        result = await pickVoiceModel(context, current: profile,
+          choice: VoiceOptions().stt, notFound: true, loadModels: ({profile}) async {
+            expect(profile?['url'], 'https://example.test');
+            if (++calls > 1) throw const FormatException();
+            return ['录音-A', '录音-B', '录音-A'];
+          });
+      }),
+    ))));
+    await tester.tap(find.text('编辑'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('HTTP 404'), findsOneWidget);
+    await tester.tap(find.text('获取模型列表'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('从列表选择模型'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('录音-B').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('使用此模型'));
+    await tester.pumpAndSettle();
+    expect(result?.model, '录音-B');
+    await tester.tap(find.text('编辑'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('获取模型列表'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('未能获取模型列表'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'manual-stt');
+    await tester.tap(find.text('使用此模型'));
+    await tester.pumpAndSettle();
+    expect(result?.model, 'manual-stt');
   });
 
   test('reopening the database preserves summaries, expires each after seven days', () async {

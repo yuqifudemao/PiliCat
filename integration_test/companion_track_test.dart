@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:async' show Timer;
 
 import 'package:PiliPlus/common/widgets/flutter/text_field/text_field.dart' show RichTextField;
 import 'package:PiliPlus/pages/ai_chat/controller.dart';
@@ -8,12 +9,15 @@ import 'package:PiliPlus/pages/ai_chat/view.dart';
 import 'package:PiliPlus/pages/setting/ai_setting/voice_settings.dart';
 import 'package:PiliPlus/pages/video/controller.dart';
 import 'package:PiliPlus/services/ai_chat/voice.dart';
+import 'package:PiliPlus/services/ai_chat/cloud_voice.dart';
 import 'package:PiliPlus/services/companion_session.dart';
 import 'package:PiliPlus/services/companion_track.dart';
 import 'package:PiliPlus/utils/storage.dart';
+import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:PiliPlus/utils/path_utils.dart';
 import 'package:PiliPlus/utils/permission_handler.dart';
 import 'package:flutter/services.dart';
+import 'package:dio/dio.dart' as dio;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:hive_ce/hive.dart';
@@ -41,6 +45,27 @@ class _VoiceChat extends AiChatController {
   bool get hasSubtitles => true;
   @override
   Map<String, String> get currentProfile => const {'model': '测试模型', 'url': 'https://example.invalid/v1'};
+}
+
+class _VoiceApi implements dio.HttpClientAdapter {
+  _VoiceApi(this.calls, this.mp3);
+  final List<List<String>> calls;
+  final Uint8List mp3;
+  @override
+  Future<dio.ResponseBody> fetch(dio.RequestOptions request, Stream<Uint8List>? stream, Future<void>? cancel) async {
+    final body = request.data;
+    if (body is dio.FormData) {
+      expect(body.files.single.value.length, greaterThan(0));
+      calls.add([request.uri.toString(), request.headers['Authorization'] as String,
+        Map.fromEntries(body.fields)['model']!]);
+      return dio.ResponseBody.fromString('{"text":"你好"}', 200, headers: {'content-type': ['application/json']});
+    }
+    calls.add([request.uri.toString(), request.headers['Authorization'] as String,
+      body['model'] as String, body['voice'] as String]);
+    return dio.ResponseBody.fromBytes(mp3, 200, headers: {'content-type': ['audio/mpeg']});
+  }
+  @override
+  void close({bool force = false}) {}
 }
 
 Future<void> _waitFor(WidgetTester tester, Finder finder) async {
@@ -149,6 +174,33 @@ void main() {
       await tester.tap(find.byTooltip('取消录音'));
       await _waitFor(tester, mic);
       expect(starts, 2);
+      await tester.tap(find.text('语音模型'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('转写模型'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('新增接口'));
+      await tester.pumpAndSettle();
+      final fields = find.descendant(of: find.widgetWithText(AlertDialog, '新增 API 接口'), matching: find.byType(TextField));
+      await tester.enterText(fields.at(0), '独立语音');
+      await tester.enterText(fields.at(1), 'https://voice.example.test/v1');
+      await tester.enterText(fields.at(2), 'test-key');
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('保存接口'));
+      await tester.pumpAndSettle();
+      final idField = find.widgetWithText(TextField, '模型 ID');
+      await tester.enterText(idField, 'my-transcriber');
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('使用此模型'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+      final saved = VoiceOptions();
+      expect(saved.stt.model, 'my-transcriber');
+      expect(saved.stt.resolve(chat.currentProfile)['key'], 'test-key');
+      expect(saved.tts.resolve(chat.currentProfile), chat.currentProfile);
+      expect(Pref.aiApiProfiles[Pref.activeAiApiProfile]['name'], '默认配置');
       expect(tester.takeException(), isNull);
     } finally {
       await tester.pumpWidget(const SizedBox.shrink());
@@ -158,6 +210,29 @@ void main() {
       await Hive.close();
       await dir.delete(recursive: true);
     }
+  });
+
+  testWidgets('one voice conversation sends recorded audio and narration to their own API and model', (tester) async {
+    await tester.runAsync(() async {
+      final calls = <List<String>>[];
+      final mp3 = base64Decode(const String.fromEnvironment('VOICE_TEST_MP3'));
+      final voice = AssistantVoice(createCloud: (profile) => CloudVoice(profile, adapter: _VoiceApi(calls, mp3)));
+      final owner = Object();
+      expect(voice.claim(owner), isTrue);
+      try {
+        final text = await voice.recordQuestion(owner, {'url': 'https://in.test/v2', 'key': 'mic-key'}, 'stt-zh',
+          onRecording: () => Timer(const Duration(milliseconds: 1200), voice.sendRecording),
+          onTranscribing: () {});
+        expect(text, '你好');
+        await voice.narrate(owner, {'url': 'https://out.test/v1', 'key': 'tts-key'}, 'my-tts', 'voice-zh', text);
+        expect(calls, [
+          ['https://in.test/v2/audio/transcriptions', 'Bearer mic-key', 'stt-zh'],
+          ['https://out.test/v1/audio/speech', 'Bearer tts-key', 'my-tts', 'voice-zh'],
+        ]);
+      } finally {
+        await voice.release(owner);
+      }
+    });
   });
 
   testWidgets('an empty native recording is recoverable without a transcription request', (tester) async {

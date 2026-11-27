@@ -12,15 +12,22 @@ class SystemSpeechUnavailable implements Exception {
 }
 
 class AssistantVoice {
+  AssistantVoice({this.createCloud = CloudVoice.new});
   static final shared = AssistantVoice();
+  final CloudVoice Function(Map<String, String>) createCloud;
   final _speech = SpeechToText();
   FlutterTts? _tts;
   static const _audio = MethodChannel('pilicat/companion_audio');
   String _audioId = '';
-  CloudVoice? _cloud;
+  final _clients = <(String, String), CloudVoice>{};
   Completer<void>? _sendRecording;
   Object? _owner;
   Completer<String>? _turn;
+
+  CloudVoice _clientFor(Map<String, String> profile) {
+    final destination = ((profile['url'] ?? '').trim(), profile['key'] ?? '');
+    return _clients.putIfAbsent(destination, () => createCloud(profile));
+  }
 
   bool claim(Object owner) {
     if (_owner != null) return false;
@@ -96,7 +103,8 @@ class AssistantVoice {
 
   Future<String> recordQuestion(Object owner, Map<String, String> profile, String model,
       {required void Function() onRecording, required void Function() onTranscribing}) async {
-    final cloud = _cloud ??= CloudVoice(profile);
+    if (_owner != owner) return '';
+    final cloud = _clientFor(profile);
     final args = {'owner': _audioId};
     await _audio.invokeMethod<void>('record', args);
     if (_owner != owner) return '';
@@ -122,7 +130,8 @@ class AssistantVoice {
 
   Future<void> narrate(Object owner, Map<String, String> profile, String model,
       String voice, String text) async {
-    final cloud = _cloud ??= CloudVoice(profile);
+    if (_owner != owner) return;
+    final cloud = _clientFor(profile);
     final id = _audioId;
     for (final part in CloudVoice.passages(text)) {
       if (_owner != owner) return;
@@ -154,8 +163,10 @@ class AssistantVoice {
   Future<void> release(Object owner) async {
     if (_owner != owner) return;
     final id = _audioId;
-    _cloud?.close();
-    _cloud = null;
+    for (final client in _clients.values) {
+      client.close();
+    }
+    _clients.clear();
     sendRecording();
     _sendRecording = null;
     final stopping = Object();

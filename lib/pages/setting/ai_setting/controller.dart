@@ -93,7 +93,7 @@ class AiSettingController extends GetxController {
   }
 
   void addProfile(String name) {
-    profiles.add({'name': name});
+    profiles.add(Pref.newAiApiProfile(name));
     selectProfile(profiles.length - 1);
   }
 
