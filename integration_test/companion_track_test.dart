@@ -18,6 +18,7 @@ import 'package:PiliPlus/utils/path_utils.dart';
 import 'package:PiliPlus/utils/permission_handler.dart';
 import 'package:flutter/services.dart';
 import 'package:dio/dio.dart' as dio;
+import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:hive_ce/hive.dart';
@@ -48,9 +49,10 @@ class _VoiceChat extends AiChatController {
 }
 
 class _VoiceApi implements dio.HttpClientAdapter {
-  _VoiceApi(this.calls, this.mp3);
+  _VoiceApi(this.calls, this.mp3, {this.missingTranscriber = false});
   final List<List<String>> calls;
   final Uint8List mp3;
+  final bool missingTranscriber;
   @override
   Future<dio.ResponseBody> fetch(dio.RequestOptions request, Stream<Uint8List>? stream, Future<void>? cancel) async {
     final body = request.data;
@@ -58,7 +60,11 @@ class _VoiceApi implements dio.HttpClientAdapter {
       expect(body.files.single.value.length, greaterThan(0));
       calls.add([request.uri.toString(), request.headers['Authorization'] as String,
         Map.fromEntries(body.fields)['model']!]);
-      return dio.ResponseBody.fromString('{"text":"你好"}', 200, headers: {'content-type': ['application/json']});
+      return dio.ResponseBody.fromString(
+        missingTranscriber ? '{"error":{"message":"model not found"}}' : '{"text":"你好"}',
+        missingTranscriber ? 404 : 200,
+        headers: {'content-type': ['application/json']},
+      );
     }
     calls.add([request.uri.toString(), request.headers['Authorization'] as String,
       body['model'] as String, body['voice'] as String]);
@@ -127,13 +133,16 @@ void main() {
     });
   });
 
-  testWidgets('microphone tap recovers from an unavailable recognizer and starts native recording',
+  testWidgets('microphone recovers from missing recognition and saves a new provider after a 404 and app switch',
       (tester) async {
     final dir = await Directory.systemTemp.createTemp('assistant-voice-');
     Hive.init(dir.path);
     GStorage.setting = await Hive.openBox('setting');
     GStorage.localCache = await Hive.openBox('localCache');
     final chat = _VoiceChat();
+    final calls = <List<String>>[];
+    final voice = AssistantVoice(createCloud: (profile) => CloudVoice(profile,
+        adapter: _VoiceApi(calls, Uint8List(0), missingTranscriber: true)));
     chat.messages.add(ChatMessage(role: 'user', content: '上一条问题'));
     Get.put<VideoDetailController>(_PausedVideo(), tag: chat.heroTag);
     Get.put<AiChatController>(chat, tag: chat.heroTag);
@@ -150,10 +159,12 @@ void main() {
     });
     try {
       await tester.pumpWidget(GetMaterialApp(
+        builder: FlutterSmartDialog.init(),
+        navigatorObservers: [FlutterSmartDialog.observer],
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
         locale: const Locale('zh', 'CN'),
         supportedLocales: const [Locale('zh', 'CN')],
-        home: Scaffold(body: AiChatPage(heroTag: chat.heroTag)),
+        home: Scaffold(body: AiChatPage(heroTag: chat.heroTag, voice: voice)),
       ));
       await tester.pumpAndSettle();
       final mic = find.byTooltip('开始语音对话');
@@ -178,16 +189,27 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('转写模型'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('新增接口'));
-      await tester.pumpAndSettle();
-      final fields = find.descendant(of: find.widgetWithText(AlertDialog, '新增 API 接口'), matching: find.byType(TextField));
-      await tester.enterText(fields.at(0), '独立语音');
-      await tester.enterText(fields.at(1), 'https://voice.example.test/v1');
-      await tester.enterText(fields.at(2), 'test-key');
-      FocusManager.instance.primaryFocus?.unfocus();
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('保存接口'));
-      await tester.pumpAndSettle();
+      Future<void> addProvider(String name, String url, String key, {bool switchApps = false}) async {
+        await tester.tap(find.text('新增接口'));
+        await tester.pumpAndSettle();
+        final fields = find.descendant(of: find.widgetWithText(AlertDialog, '新增 API 接口'), matching: find.byType(TextField));
+        await tester.enterText(fields.at(0), name);
+        await tester.enterText(fields.at(1), url);
+        if (switchApps) {
+          final binding = tester.binding;
+          for (final state in [AppLifecycleState.inactive, AppLifecycleState.hidden, AppLifecycleState.paused,
+            AppLifecycleState.hidden, AppLifecycleState.inactive, AppLifecycleState.resumed]) {
+            binding.handleAppLifecycleStateChanged(state);
+          }
+          await tester.pumpAndSettle();
+        }
+        await tester.enterText(fields.at(2), key);
+        FocusManager.instance.primaryFocus?.unfocus();
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('保存接口'));
+        await tester.pumpAndSettle();
+      }
+      await addProvider('独立语音', 'https://voice.example.test/v1', 'test-key');
       final idField = find.widgetWithText(TextField, '模型 ID');
       await tester.enterText(idField, 'my-transcriber');
       FocusManager.instance.primaryFocus?.unfocus();
@@ -201,6 +223,27 @@ void main() {
       expect(saved.stt.resolve(chat.currentProfile)['key'], 'test-key');
       expect(saved.tts.resolve(chat.currentProfile), chat.currentProfile);
       expect(Pref.aiApiProfiles[Pref.activeAiApiProfile]['name'], '默认配置');
+      await tester.tap(mic);
+      final send = find.byTooltip('录音中，点麦克风发送');
+      await _waitFor(tester, send);
+      await Future<void>.delayed(const Duration(milliseconds: 1300));
+      await tester.tap(send);
+      await _waitFor(tester, find.textContaining('请求返回 HTTP 404'));
+      await tester.pumpAndSettle();
+      await addProvider('备用转写', 'https://retry.example.test/v1', 'retry-key', switchApps: true);
+      await tester.enterText(idField, 'retry-stt');
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('使用此模型'));
+      await tester.pumpAndSettle();
+      final retry = VoiceOptions();
+      expect(retry.stt.model, 'retry-stt');
+      expect(retry.stt.resolve(chat.currentProfile)['key'], 'retry-key');
+      expect(retry.tts.resolve(chat.currentProfile), chat.currentProfile);
+      expect(Pref.aiApiProfiles[Pref.activeAiApiProfile]['name'], '默认配置');
+      expect(calls, [
+        ['https://voice.example.test/v1/audio/transcriptions', 'Bearer test-key', 'my-transcriber'],
+      ]);
       expect(tester.takeException(), isNull);
     } finally {
       await tester.pumpWidget(const SizedBox.shrink());

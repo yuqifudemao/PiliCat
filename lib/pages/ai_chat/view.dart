@@ -29,11 +29,12 @@ import 'package:get/get.dart';
 import 'package:markdown/markdown.dart' as md;
 
 class AiChatPage extends CommonSlidePage {
-  const AiChatPage({super.key, required this.heroTag, this.inPlayer = false})
+  const AiChatPage({super.key, required this.heroTag, this.inPlayer = false, this.voice})
       : super(enableSlide: !inPlayer);
 
   final String heroTag;
   final bool inPlayer;
+  final AssistantVoice? voice;
 
   @override
   State<AiChatPage> createState() => _AiChatPageState();
@@ -346,6 +347,7 @@ class _AiChatPageState extends State<AiChatPage>
     }
   }
 
+  late final _assistantVoice = widget.voice ?? AssistantVoice.shared;
   Object? _voiceOwner;
   String _voiceStatus = '';
   bool _voiceRequest = false;
@@ -362,14 +364,14 @@ class _AiChatPageState extends State<AiChatPage>
     _voiceParts = null;
     if (_voiceRequest) chatCtl.cancelRequest();
     _voiceRequest = false;
-    unawaited(AssistantVoice.shared.release(owner).catchError((_) {}));
+    unawaited(_assistantVoice.release(owner).catchError((_) {}));
     if (redraw && mounted) setState(() {});
   }
 
   Future<void> _voice([ChatMessage? message]) async {
     if (_voiceOwner != null) {
-      if (message == null && AssistantVoice.shared.recording) {
-        AssistantVoice.shared.sendRecording();
+      if (message == null && _assistantVoice.recording) {
+        _assistantVoice.sendRecording();
       } else {
         _stopVoice();
       }
@@ -377,7 +379,7 @@ class _AiChatPageState extends State<AiChatPage>
     }
     if (chatCtl.isRequesting.value) return;
     final owner = Object();
-    final voice = AssistantVoice.shared;
+    final voice = _assistantVoice;
     if (!voice.claim(owner)) return;
     _voiceOwner = owner;
     var stage = '打开视频助手';
@@ -497,17 +499,24 @@ class _AiChatPageState extends State<AiChatPage>
         if (status == 404 && purpose != null) {
           final options = VoiceOptions();
           final forInput = purpose == VoicePurpose.transcription;
-          final changed = await pickVoiceModel(context, current: chatCtl.currentProfile,
+          final current = chatCtl.currentProfile;
+          // Editing the next attempt must survive switching apps to copy an API key.
+          _stopVoice();
+          final changed = await pickVoiceModel(context, current: current,
               choice: forInput ? options.stt : options.tts, notFound: true);
-          if (active() && changed != null) {
+          if (mounted && changed != null) {
             final latest = VoiceOptions();
             if (forInput) {
               latest.stt = changed;
             } else {
               latest.tts = changed;
             }
-            await latest.save();
-            if (active()) SmartDialog.showToast(forInput ? '已保存转写模型，请再次点麦克风提问' : '已保存朗读模型，请再次点朗读');
+            try {
+              await latest.save();
+              if (mounted) SmartDialog.showToast(forInput ? '已保存转写模型，请再次点麦克风提问' : '已保存朗读模型，请再次点朗读');
+            } catch (_) {
+              if (mounted) SmartDialog.showToast('语音模型保存失败，请重试');
+            }
           }
         } else {
           SmartDialog.showToast(status == null ? '${stage}连接失败，请检查网络和 API 地址'
@@ -1217,12 +1226,12 @@ class _AiChatPageState extends State<AiChatPage>
       ),
       child: Row(
         children: [
-          if (Platform.isAndroid && _voiceOwner != null && AssistantVoice.shared.recording)
+          if (Platform.isAndroid && _voiceOwner != null && _assistantVoice.recording)
             IconButton(tooltip: '取消录音', onPressed: _stopVoice, icon: const Icon(Icons.close)),
           if (Platform.isAndroid)
             IconButton(
               tooltip: _voiceStatus.isEmpty ? '开始语音对话' : _voiceStatus,
-              icon: Icon(_voiceOwner == null ? Icons.mic_none : AssistantVoice.shared.recording ? Icons.send : Icons.stop_circle_outlined),
+              icon: Icon(_voiceOwner == null ? Icons.mic_none : _assistantVoice.recording ? Icons.send : Icons.stop_circle_outlined),
               onPressed: () => _voice(),
             ),
           Expanded(
