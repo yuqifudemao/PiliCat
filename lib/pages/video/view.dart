@@ -23,6 +23,7 @@ import 'package:PiliPlus/models/common/episode_panel_type.dart';
 import 'package:PiliPlus/models/common/list_order.dart';
 import 'package:PiliPlus/models/common/pgc_episode_type.dart';
 import 'package:PiliPlus/models_new/pgc/pgc_info_model/result.dart';
+import 'package:PiliPlus/models_new/video/video_ai_conclusion/model_result.dart';
 import 'package:PiliPlus/models_new/video/video_tag/data.dart';
 import 'package:PiliPlus/pages/ai_chat/controller.dart';
 import 'package:PiliPlus/pages/ai_chat/view.dart';
@@ -2675,11 +2676,10 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
   );
 
   // ai总结
-  void showAiBottomSheet() {
+  void showAiBottomSheet(AiConclusionResult result) {
     videoDetailController.childKey.currentState?.showBottomSheet(
       constraints: const BoxConstraints(),
-      (context) =>
-          AiConclusionPanel(item: ugcIntroController.aiConclusionResult!),
+      (context) => AiConclusionPanel(item: result),
     );
   }
 

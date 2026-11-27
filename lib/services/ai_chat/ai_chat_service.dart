@@ -36,7 +36,11 @@ class AiPromptTemplate {
 /// 规范化流式增量：服务层负责协议字段提取与 `<think>` 解析，
 /// 控制器只负责把两个增量追加到当前助手消息
 class AiStreamDelta {
-  const AiStreamDelta({this.contentDelta = '', this.reasoningDelta = ''});
+  const AiStreamDelta({this.contentDelta = '', this.reasoningDelta = '', this.completed = false});
+
+  /// The provider confirmed the end of the answer. A closed socket alone can
+  /// also mean that a partially delivered answer was interrupted.
+  final bool completed;
 
   /// 回答正文增量
   final String contentDelta;
@@ -298,6 +302,8 @@ class AiChatService {
     // 记录是否出现过 SSE data 行：200 但响应不是 SSE（如填错地址时服务器
     // 返回 HTML 页面或完整 JSON）会静默产出空回复，需在流结束后报错
     var sawData = false;
+    String? finishReason;
+    var hasError = false;
     final nonSse = StringBuffer();
     final parser = _ThinkTagParser();
     _ReasoningSource? source;
@@ -339,13 +345,18 @@ class AiChatService {
         if (split.content.isNotEmpty) {
           yield AiStreamDelta(contentDelta: split.content);
         }
+        if (!hasError && (finishReason == null || finishReason == 'stop')) {
+          yield const AiStreamDelta(completed: true);
+        }
         return;
       }
       if (data.isEmpty) continue;
       try {
         final json = jsonDecode(data) as Map<String, dynamic>;
+        if (json['error'] != null) hasError = true;
         final choices = json['choices'] as List?;
         if (choices != null && choices.isNotEmpty) {
+          finishReason = choices[0]['finish_reason'] as String? ?? finishReason;
           final delta = choices[0]['delta'] as Map<String, dynamic>?;
           final content = delta?['content'] as String?;
           if (content != null && content.isNotEmpty) {
@@ -374,6 +385,7 @@ class AiChatService {
           }
         }
       } catch (e) {
+        hasError = true;
         if (kDebugMode) debugPrint('SSE parse error: $e');
       }
     }
@@ -390,6 +402,9 @@ class AiChatService {
     }
     if (split.content.isNotEmpty) {
       yield AiStreamDelta(contentDelta: split.content);
+    }
+    if (!hasError && finishReason == 'stop') {
+      yield const AiStreamDelta(completed: true);
     }
 
     if (!sawData) {

@@ -66,15 +66,6 @@ class UgcIntroController extends CommonIntroController with ReloadMixin {
   late final enableAi = Pref.enableAi;
   late final horizontalMemberPage = Pref.horizontalMemberPage;
 
-  ({String bvid, int cid, AiConclusionResult result})? _conclusion;
-
-  AiConclusionResult? get aiConclusionResult {
-    final cached = _conclusion;
-    return cached != null && cached.bvid == bvid && cached.cid == cid.value
-        ? cached.result
-        : null;
-  }
-
   late final Map<int?, bool> seasonFavState = {};
 
   int? _seasonCid;
@@ -851,8 +842,6 @@ class UgcIntroController extends CommonIntroController with ReloadMixin {
   }
 
   Future<AiConclusionResult?> aiConclusion({bool showLoading = true}) async {
-    final cached = aiConclusionResult;
-    if (cached != null) return cached;
     final currentBvid = bvid;
     final currentCid = cid.value;
     final result = await getAiConclusion(
@@ -862,10 +851,6 @@ class UgcIntroController extends CommonIntroController with ReloadMixin {
       showLoading: showLoading,
     );
     if (isClosed || currentBvid != bvid || currentCid != cid.value) return null;
-    if (result != null &&
-        (result.summary?.isNotEmpty == true || result.outline?.isNotEmpty == true)) {
-      _conclusion = (bvid: currentBvid, cid: currentCid, result: result);
-    }
     return result;
   }
 

@@ -96,6 +96,7 @@ class _AiChatPageState extends State<AiChatPage>
   void initState() {
     super.initState();
     chatCtl = Get.find<AiChatController>(tag: widget.heroTag);
+    chatCtl.openPanel();
     _templates = AiChatService.getTemplates();
     _scrollCtl.addListener(_onScroll);
   }
@@ -515,7 +516,7 @@ class _AiChatPageState extends State<AiChatPage>
             ),
             if (widget.inPlayer && chatCtl.messages.isNotEmpty)
               IconButton(
-                tooltip: '重置对话',
+                tooltip: '清除本集对话和已保存的总结',
                 visualDensity: VisualDensity.compact,
                 onPressed: chatCtl.clearMessages,
                 icon: const Icon(Icons.refresh, size: 18),
@@ -577,6 +578,9 @@ class _AiChatPageState extends State<AiChatPage>
           Obx(() {
             final requesting = chatCtl.isRequesting.value;
             final hasContext = chatCtl.hasVideoContext.value;
+            final name = _templates.elementAtOrNull(_selectedPromptIndex)?.name;
+            final hasSummary = name != null &&
+                chatCtl.messages.any((message) => message.templateName == name);
             return Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -595,7 +599,7 @@ class _AiChatPageState extends State<AiChatPage>
                       ? FilledButton.styleFrom(visualDensity: VisualDensity.compact)
                       : null,
                   icon: const Icon(Icons.play_arrow, size: 20),
-                  label: const Text('分析'),
+                  label: Text(hasSummary ? '重新分析' : '分析'),
                 ),
               ],
             );
@@ -634,7 +638,7 @@ class _AiChatPageState extends State<AiChatPage>
         );
       }
 
-      _scrollToBottom();
+      if (!chatCtl.showingSavedSummaries) _scrollToBottom();
 
        return NotificationListener<ScrollNotification>(
          onNotification: _onScrollNotification,
@@ -679,11 +683,13 @@ class _AiChatPageState extends State<AiChatPage>
       padding: EdgeInsets.symmetric(vertical: _isCompact ? 8 : 12),
       child: Row(
         children: [
+          const SizedBox(width: 8),
           Expanded(child: Divider(color: colorScheme.outlineVariant)),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+          Flexible(
+            flex: 8,
             child: Text(
-              source.isEmpty ? '已载入视频上下文' : '资料来源 · $source',
+              source,
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 12,
                 color: colorScheme.outline,
@@ -691,6 +697,7 @@ class _AiChatPageState extends State<AiChatPage>
             ),
           ),
           Expanded(child: Divider(color: colorScheme.outlineVariant)),
+          const SizedBox(width: 8),
         ],
       ),
     );

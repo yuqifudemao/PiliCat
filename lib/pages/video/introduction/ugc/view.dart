@@ -14,6 +14,7 @@ import 'package:PiliPlus/common/widgets/selection_text.dart';
 import 'package:PiliPlus/common/widgets/stat/stat.dart';
 import 'package:PiliPlus/common/widgets/translucent_column.dart';
 import 'package:PiliPlus/http/sponsor_block.dart';
+import 'package:PiliPlus/models_new/video/video_ai_conclusion/model_result.dart';
 import 'package:PiliPlus/models_new/video/video_detail/data.dart';
 import 'package:PiliPlus/models_new/video/video_detail/desc_v2.dart';
 import 'package:PiliPlus/models_new/video/video_detail/episode.dart';
@@ -62,7 +63,7 @@ class UgcIntroPanel extends StatefulWidget {
     required this.isHorizontal,
   });
   final String heroTag;
-  final Function showAiBottomSheet;
+  final ValueChanged<AiConclusionResult> showAiBottomSheet;
   final VoidCallback showAiChatBottomSheet;
   final ShowEpisodes showEpisodes;
   final ValueChanged<int?> onShowMemberPage;
@@ -1030,7 +1031,7 @@ class _UgcIntroPanelState extends State<UgcIntroPanel> {
           if (!mounted || result == null) return;
           if (result.summary?.isNotEmpty == true ||
               result.outline?.isNotEmpty == true) {
-            widget.showAiBottomSheet();
+            widget.showAiBottomSheet(result);
           } else {
             SmartDialog.showToast('当前视频暂无可用的 B 站总结');
           }

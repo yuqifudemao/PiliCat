@@ -184,6 +184,7 @@ jobs:
           test/utils/playback_rate_meter_test.dart
           test/pages/video/player_ai_summary_test.dart
           test/services/companion_track_test.dart
+          test/services/video_summary_cache_test.dart
 
       - name: Load persistent Android signing key
         if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'

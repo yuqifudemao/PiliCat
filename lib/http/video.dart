@@ -958,6 +958,9 @@ abstract final class VideoHttp {
     int? upMid,
     CancelToken? cancelToken,
   }) async {
+    final episode = (account: Accounts.main.mid, bvid: bvid, cid: cid);
+    final saved = GStorage.videoSummaries.official(episode);
+    if (saved != null) return Success(saved);
     final params = await WbiSign.makSign({
       'bvid': bvid,
       'cid': cid,
@@ -972,7 +975,13 @@ abstract final class VideoHttp {
     if (code == 0) {
       final int? dataCode = res.data['data']?['code'];
       if (dataCode == 0) {
-        return Success(AiConclusionData.fromJson(res.data['data']));
+        final data = res.data['data'] as Map<String, dynamic>;
+        final result = AiConclusionData.fromJson(data);
+        final model = data['model_result'];
+        if (cancelToken?.isCancelled != true && model is Map<String, dynamic>) {
+          await GStorage.videoSummaries.saveOfficial(episode, model);
+        }
+        return Success(result);
       } else {
         return Error(null, code: dataCode);
       }

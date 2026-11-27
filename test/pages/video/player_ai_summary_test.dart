@@ -28,6 +28,8 @@ class _ExistingChat extends AiChatController {
   @override
   void onInit() {}
   @override
+  void openPanel() {}
+  @override
   void onClose() {}
   @override
   bool get hasSubtitles => true;

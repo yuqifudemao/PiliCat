@@ -10,6 +10,9 @@ import 'package:PiliPlus/services/ai_chat/caption_frame_reader.dart';
 import 'package:PiliPlus/services/ai_chat/frame_captions.dart';
 import 'package:PiliPlus/services/playback_diagnostics.dart';
 import 'package:PiliPlus/services/ai_chat/video_material.dart';
+import 'package:PiliPlus/services/ai_chat/video_summary_cache.dart';
+import 'package:PiliPlus/utils/accounts.dart';
+import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
@@ -29,6 +32,12 @@ class AiChatController extends GetxController {
   final String heroTag;
   late final VideoDetailController _videoCtl;
   late final StreamSubscription<int> _partChanges;
+  SummaryEpisode get _episode =>
+      (account: Accounts.main.mid, bvid: _videoCtl.bvid, cid: _videoCtl.cid.value);
+  SummaryEpisode? _openedEpisode;
+  bool showingSavedSummaries = false;
+  bool _hasRestoredSummary = false;
+  String _sourceLabel = '';
 
   AiChatController({required this.heroTag});
 
@@ -51,6 +60,10 @@ class AiChatController extends GetxController {
       '4. 根据标明的资料来源回答。画面字幕是抽样，仅涵盖识别到的文字。B 站摘要与提纲只涵盖所列要点。'
       '若来源是当前片段，只总结该片段，在开头说明时间范围，不能据此推断整部视频。若资料仅有标题与简介，在开头说明这一点，只概括简介。不要补写台词、未提到的结论或时间点。';
 
+  static const _savedSummaryPrompt =
+      '你可以依据对话中已保存的视频总结回答追问。当前没有载入原始视频资料。'
+      '总结未涉及的细节请说明，可以请用户点击「载入上下文」。保留已有时间戳。';
+
   // --- Cached video context for system message injection ---
   String? _cachedVideoContext;
   int _contextLoadIndex = -1;
@@ -65,7 +78,38 @@ class AiChatController extends GetxController {
   void onInit() {
     super.onInit();
     _videoCtl = Get.find<VideoDetailController>(tag: heroTag);
-    _partChanges = _videoCtl.cid.listen((_) => clearMessages());
+    _partChanges = _videoCtl.cid.listen((_) {
+      if (_openedEpisode != null && _episode != _openedEpisode) openPanel();
+    });
+  }
+
+  void openPanel() {
+    final episode = _episode;
+    if (_openedEpisode == episode && !showingSavedSummaries) return;
+    _resetSession();
+    _openedEpisode = episode;
+    final saved = GStorage.videoSummaries.analyses(episode);
+    if (saved.isEmpty) return;
+    showingSavedSummaries = _hasRestoredSummary = true;
+    for (final item in saved) {
+      messages.addAll([
+        ChatMessage(
+          role: 'system',
+          content: [
+            '本机保存 ${VideoSummaryCache.retention.inDays} 天',
+            if (item.model.isNotEmpty) item.model,
+            if (item.source.isNotEmpty) item.source,
+          ].join(' · '),
+          isDivider: true,
+        ),
+        ChatMessage(
+          role: 'user',
+          content: '根据${item.source}生成的${item.template}',
+          templateName: item.template,
+        ),
+        ChatMessage(role: 'assistant', content: item.text),
+      ]);
+    }
   }
 
   @override
@@ -139,8 +183,6 @@ class AiChatController extends GetxController {
       conclusion: video.isFileSource || !video.isUgc ? null : () async {
         if (!current()) return null;
         final intro = video.ugcIntroCtr;
-        final cached = intro.aiConclusionResult;
-        if (cached != null) return cached;
         final res = await VideoHttp.aiConclusion(
           bvid: bvid, cid: cid, upMid: intro.videoDetail.value.owner?.mid,
           cancelToken: token,
@@ -225,7 +267,8 @@ class AiChatController extends GetxController {
     subtitleWarning.value = material.text.length > 15000;
     contextStatus.value = '';
     _contextLoadIndex = messages.length;
-    messages.add(ChatMessage(role: 'system', content: material.source.label, isDivider: true));
+    _sourceLabel = material.source.label;
+    messages.add(ChatMessage(role: 'system', content: '资料来源 · $_sourceLabel', isDivider: true));
     hasVideoContext.value = true;
   }
 
@@ -259,9 +302,11 @@ class AiChatController extends GetxController {
     required String errorPrefix,
   }) async {
     if (_requestToken != null || isClosed) return;
+    final episode = _episode;
     final profile = currentProfile;
     final token = CancelToken();
     _requestToken = token;
+    showingSavedSummaries = false;
     isRequesting.value = true;
     var removeEmpty = false;
 
@@ -283,7 +328,20 @@ class AiChatController extends GetxController {
         response,
       ]);
 
-      await _streamResponse(token, response, profile);
+      final complete = await _streamResponse(token, response, profile);
+      if (complete && chooseSource != null && _isCurrentRequest(token) && episode == _episode) {
+        await GStorage.videoSummaries.saveAnalysis(
+          episode,
+          analysis: (
+            template: templateName ?? '视频总结',
+            model: profile['model'] ?? '',
+            source: _sourceLabel,
+            text: response.content,
+          ),
+          prompt: prompt,
+          profile: profile,
+        );
+      }
     } catch (e) {
       if (_isCurrentRequest(token)) {
         removeEmpty = true;
@@ -323,7 +381,7 @@ class AiChatController extends GetxController {
     isRequesting.value = false;
   }
 
-  Future<void> _streamResponse(
+  Future<bool> _streamResponse(
     CancelToken token,
     ChatMessage response,
     Map<String, String> profile,
@@ -335,7 +393,7 @@ class AiChatController extends GetxController {
         'role': 'system',
         'content': hasVideoContext.value
             ? _systemPromptB
-            : _systemPromptA,
+            : _hasRestoredSummary ? _savedSummaryPrompt : _systemPromptA,
       },
     ];
 
@@ -358,6 +416,7 @@ class AiChatController extends GetxController {
       chatMessages.add({'role': m.role, 'content': m.content});
     }
 
+    var complete = false;
     await for (final delta in AiChatService.streamChat(
       messages: chatMessages,
       profile: profile,
@@ -365,7 +424,8 @@ class AiChatController extends GetxController {
       reasoningEffort: profile['effort'],
       cancelToken: token,
     )) {
-      if (!_isCurrentRequest(token)) return;
+      if (!_isCurrentRequest(token)) return false;
+      if (delta.completed) complete = true;
       if (delta.reasoningDelta.isNotEmpty) {
         _appendReasoningDelta(response, delta.reasoningDelta);
       }
@@ -373,6 +433,7 @@ class AiChatController extends GetxController {
         _appendContentDelta(response, delta.contentDelta);
       }
     }
+    return complete;
   }
 
   /// 追加思考增量。首次非空增量记录起始时刻，正文仍空时默认展开为限高卡片
@@ -430,8 +491,15 @@ class AiChatController extends GetxController {
   }
 
   void clearMessages() {
+    unawaited(GStorage.videoSummaries.clearAnalyses(_episode));
+    _resetSession();
+  }
+
+  void _resetSession() {
     cancelRequest();
     _stopReasoningTimer();
+    showingSavedSummaries = _hasRestoredSummary = false;
+    _sourceLabel = '';
     messages.clear();
     subtitleWarning.value = false;
     hasVideoContext.value = false;

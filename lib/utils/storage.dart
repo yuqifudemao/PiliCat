@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:PiliPlus/models/model_owner.dart';
 import 'package:PiliPlus/models/user/danmaku_rule_adapter.dart';
 import 'package:PiliPlus/models/user/info.dart';
+import 'package:PiliPlus/services/ai_chat/video_summary_cache.dart';
 import 'package:PiliPlus/utils/accounts.dart';
 import 'package:PiliPlus/utils/accounts/account_adapter.dart';
 import 'package:PiliPlus/utils/accounts/account_type_adapter.dart';
@@ -20,6 +21,7 @@ abstract final class GStorage {
   static late final Box<UserInfoData> userInfo;
   static late final Box<dynamic> historyWord;
   static late final Box<dynamic> localCache;
+  static late final videoSummaries = VideoSummaryCache(localCache);
   static late final Box<dynamic> setting;
   static late final Box<dynamic> video;
   static late final Box<int> watchProgress;
@@ -80,6 +82,7 @@ abstract final class GStorage {
       ).then((res) => watchProgress = res),
     ]);
 
+    videoSummaries.pruneExpired();
     if (Pref.saveReply) {
       reply = await Hive.openBox<Uint8List>(
         'reply',
