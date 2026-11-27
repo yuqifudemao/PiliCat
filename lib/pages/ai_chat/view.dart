@@ -9,6 +9,7 @@ import 'package:PiliPlus/services/ai_chat/ai_chat_service.dart';
 import 'package:PiliPlus/services/ai_chat/video_material.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:PiliPlus/services/ai_chat/voice.dart';
+import 'package:PiliPlus/services/playback_diagnostics.dart';
 import 'package:PiliPlus/pages/setting/ai_setting/voice_settings.dart';
 import 'package:PiliPlus/utils/permission_handler.dart';
 import 'package:dio/dio.dart' show CancelToken, DioException;
@@ -378,12 +379,21 @@ class _AiChatPageState extends State<AiChatPage>
     final voice = AssistantVoice.shared;
     if (!voice.claim(owner)) return;
     _voiceOwner = owner;
+    var stage = '打开视频助手';
+    setState(() {
+      _reading = message;
+      _voiceStatus = message == null ? '正在启动麦克风，点击结束' : '正在准备朗读，点击结束';
+    });
     bool active() => mounted && identical(_voiceOwner, owner);
     try {
-      final video = Get.find<VideoDetailController>(tag: widget.heroTag);
-      _voiceParts = video.cid.listen((_) => _stopVoice());
+      final video = Get.isRegistered<VideoDetailController>(tag: widget.heroTag)
+          ? Get.find<VideoDetailController>(tag: widget.heroTag) : null;
+      _voiceParts = video?.cid.listen((_) => _stopVoice());
       if (message == null) {
-        final mic = await Permission.microphone.request();
+        stage = '检查麦克风权限';
+        var mic = await Permission.microphone.status;
+        if (!active()) return;
+        if (!mic.isGranted) mic = await Permission.microphone.request();
         if (!active()) return;
         if (!mic.isGranted) {
           if (mic.isPermanentlyDenied) {
@@ -403,15 +413,20 @@ class _AiChatPageState extends State<AiChatPage>
         }
       }
       if (!active()) return;
-      await video.plPlayerController.pause();
-      if (!active()) return;
+      if (video?.player?.state.playing == true) {
+        stage = '暂停视频';
+        await video?.plPlayerController.pause();
+        if (!active()) return;
+      }
+      stage = '读取语音设置';
       var options = VoiceOptions();
-      final profile = chatCtl.currentProfile;
-      Future<void> read(String text) => options.narration
-          ? voice.narrate(owner, profile, options.tts, options.voice, text)
-          : voice.read(owner, text);
+      Future<void> read(String text) {
+        stage = options.narration ? 'AI 朗读' : '系统朗读';
+        return options.narration
+            ? voice.narrate(owner, chatCtl.currentProfile, options.tts, options.voice, text)
+            : voice.read(owner, text);
+      }
       if (message != null) {
-        setState(() => _reading = message);
         await read(message.content);
         return;
       }
@@ -419,32 +434,49 @@ class _AiChatPageState extends State<AiChatPage>
         setState(() => _voiceStatus = '正在听，点击结束');
         final String question;
         if (options.transcription) {
-          question = await voice.recordQuestion(owner, profile, options.stt,
+          stage = '麦克风录音';
+          question = await voice.recordQuestion(owner, chatCtl.currentProfile, options.stt,
             onRecording: () { if (active()) setState(() => _voiceStatus = '录音中，点麦克风发送'); },
-            onTranscribing: () { if (active()) setState(() => _voiceStatus = '正在转写，点击结束'); },
+            onTranscribing: () {
+              stage = '录音转写';
+              if (active()) setState(() => _voiceStatus = '正在转写，点击结束');
+            },
           );
         } else {
+          stage = '系统语音识别';
           try {
             question = await voice.listen(owner);
-          } on SystemSpeechUnavailable {
+          } on SystemSpeechUnavailable catch (error, stack) {
             if (!active()) return;
-            final saved = await showVoiceOptions(context, recognitionFailed: true);
-            if (!active() || saved != true) return;
+            _logVoiceFailure(stage, error.reason, stack);
+            final choice = await showVoiceOptions(context, recognitionFailed: true);
+            if (!active()) return;
+            if (choice == VoiceSettingsAction.keyboard) {
+              _focusNode.requestFocus();
+              return;
+            }
+            if (choice != VoiceSettingsAction.saved) return;
             options = VoiceOptions();
             if (options.transcription) continue;
             return;
           }
         }
-        if (!active() || question.isEmpty) break;
+        if (!active()) return;
+        if (question.isEmpty) {
+          SmartDialog.showToast('没有听清，点麦克风可以再说一次');
+          break;
+        }
+        stage = '提交语音提问';
         setState(() => _voiceStatus = '正在回答，点击结束');
         _voiceRequest = true;
-        if (!chatCtl.hasVideoContext.value && chatCtl.messages.isEmpty) {
+        if (video != null && !chatCtl.hasVideoContext.value && chatCtl.messages.isEmpty) {
           await chatCtl.loadVideoContext(chooseSource: _chooseCaptionSource, confirmPlaying: _confirmPlayingCaptions);
         }
         if (!active()) return;
-        final seconds = video.plPlayerController.progress;
+        final seconds = video?.plPlayerController.progress;
         final before = chatCtl.messages.length;
-        await chatCtl.sendFollowUp('当前播放位置 [${(seconds ~/ 60).toString().padLeft(2, '0')}:${(seconds % 60).toString().padLeft(2, '0')}]。$question');
+        await chatCtl.sendFollowUp(seconds == null ? question :
+            '当前播放位置 [${(seconds ~/ 60).toString().padLeft(2, '0')}:${(seconds % 60).toString().padLeft(2, '0')}]。$question');
         if (!active()) return;
         _voiceRequest = false;
         final reply = chatCtl.messages.lastOrNull;
@@ -452,15 +484,33 @@ class _AiChatPageState extends State<AiChatPage>
         setState(() => _voiceStatus = '正在朗读，点击结束');
         await read(reply.content);
       }
-    } on DioException catch (error) {
+    } on DioException catch (error, stack) {
       final status = error.response?.statusCode;
-      if (active()) SmartDialog.showToast(status == null ? '语音接口连接失败，请检查网络和 API 地址'
-          : '语音接口返回 HTTP $status，请检查当前 API 的权限、语音模型和音色');
-    } catch (error) {
-      if (active()) SmartDialog.showToast('语音提示 · $error');
+      if (active()) {
+        _logVoiceFailure(stage, status == null ? error.type.name : 'HTTP $status', stack);
+        SmartDialog.showToast(status == null ? '${stage}连接失败，请检查网络和 API 地址'
+            : '${stage}接口返回 HTTP $status，请确认当前服务支持所选语音模型');
+      }
+    } catch (error, stack) {
+      if (active()) {
+        _logVoiceFailure(stage, error.runtimeType.toString(), stack);
+        final hint = switch (error) {
+          StateError e => e.message,
+          FormatException e => e.message,
+          PlatformException e when e.code == 'companion_audio' => e.message ?? '请重试',
+          _ => '请重试，可在播放诊断日志中查看出错位置',
+        };
+        SmartDialog.showToast('${stage}失败 · $hint');
+      }
     } finally {
       if (active()) _stopVoice();
     }
+  }
+
+  void _logVoiceFailure(String stage, String reason, StackTrace stack) {
+    final frames = RegExp(r'package:[\w./-]+\.dart:\d+(?::\d+)?')
+        .allMatches(stack.toString()).take(2).map((m) => m.group(0)).join(' ');
+    PlaybackDiagnostics.record('AI 语音 · $stage · $reason $frames'.trimRight());
   }
 
   void _sendCustomPrompt() {
